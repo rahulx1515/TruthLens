@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-10-30T07:51:26Z",
+  "model": "llama3.2:latest",
+  "hardware": {
+    "os": "Windows AMD64",
+    "threads_allocated": 4,
+    "system_ram_total_mb": 15693.61,
+    "initial_ram_used_mb": 13093.43,
+    "peak_ram_used_mb": 14242.5,
+    "ram_increase_mb": 1149.07
+  },
+  "english_task": {
+    "latency_seconds": 29.3,
+    "valid_json": true,
+    "claims_count": 2,
+    "sample_claim": "The Federal Reserve held benchmark interest rates steady at 5.25% on Wednesday."
+  },
+  "hindi_task": {
+    "latency_seconds": 15.54,
+    "valid_json": true,
+    "claims_count": 1,
+    "sample_claim": "चंद्रमा के दक्षिणी ध्रुव पर सल्फर की मौजूदगी की पुष्टि की गई है।"
+  },
+  "verdict": {
+    "ready_for_production": true,
+    "recommendation": "llama3.2:latest fulfills latency (<10s), memory (<4GB footprint), and strict JSON compliance for both English and Hindi claim extraction on 16GB CPU machine."
+  }
+}

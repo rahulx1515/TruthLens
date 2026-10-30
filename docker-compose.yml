@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: truthlens_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: truthlens_user
+      POSTGRES_PASSWORD: truthlens_password
+      POSTGRES_DB: truthlens_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U truthlens_user -d truthlens_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: truthlens_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - PROJECT_NAME=TruthLens
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - API_V1_STR=/api/v1
+      - SECRET_KEY=truthlens-production-secure-secret-key-min-32-chars-long!
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - DATABASE_URL=postgresql://truthlens_user:truthlens_password@db:5432/truthlens_db
+      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:80"]
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: truthlens_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
+

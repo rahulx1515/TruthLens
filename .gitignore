@@ -1,18 +1,67 @@
-# Virtual environment
-venv/
-
-# Python cache
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Raw datasets
-data/raw/
+# Virtual Environment
+.env
+.env.local
+.env.*.local
 
-# Processed datasets
-data/processed/
+# Databases
+*.db
+*.sqlite3
+data/raw/*.csv
+data/raw/*.zip
+data/processed/*.npz
+data/processed/*.npy
+
+# Node & Frontend
+node_modules/
+dist/
+.npm
+.eslintcache
+*.tsbuildinfo
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+*-checkpoint.ipynb
 
-# VS Code
-.vscode/
+# Test & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+data/processed/cleaned_news.csv
+
+# Frontend build output
+frontend/dist/

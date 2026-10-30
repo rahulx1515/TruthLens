@@ -1,0 +1,251 @@
+{
+  "timestamp": "2026-10-30T08:33:26Z",
+  "total_test_cases": 20,
+  "evaluation_duration_seconds": 6.06,
+  "english_metrics": {
+    "total": 10,
+    "correct": 10,
+    "accuracy_percent": 100.0,
+    "false_refutations": 0
+  },
+  "hindi_metrics": {
+    "total": 10,
+    "correct": 10,
+    "accuracy_percent": 100.0,
+    "false_refutations": 0,
+    "unicode_matra_failures": 0
+  },
+  "overall_accuracy_percent": 100.0,
+  "detailed_results": {
+    "english": [
+      {
+        "id": "en_01_supported",
+        "language": "en",
+        "headline": "Federal Reserve Holds Rates at 5.25%",
+        "category": "Monetary Policy",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.86,
+        "independent_sources": 2,
+        "matched": true
+      },
+      {
+        "id": "en_02_refuted",
+        "language": "en",
+        "headline": "Secret Alien Base Discovered Under White House",
+        "category": "Viral Hoax",
+        "expected_verdict": "REFUTED",
+        "predicted_verdict": "REFUTED",
+        "confidence": 0.83,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "en_03_outdated",
+        "language": "en",
+        "headline": "UK Prime Minister Boris Johnson Resigns",
+        "category": "Politics",
+        "expected_verdict": "OUTDATED",
+        "predicted_verdict": "OUTDATED",
+        "confidence": 0.85,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "en_04_mixed",
+        "language": "en",
+        "headline": "New Medical Drug Cures All Cancer Types in Clinical Trials",
+        "category": "Health",
+        "expected_verdict": "MIXED",
+        "predicted_verdict": "MIXED",
+        "confidence": 0.8,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "en_05_unverified",
+        "language": "en",
+        "headline": "Lost City of Gold Found in Deep Caves of Greenland",
+        "category": "Exploration",
+        "expected_verdict": "UNVERIFIED",
+        "predicted_verdict": "UNVERIFIED",
+        "confidence": 0.5,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "en_06_supported_syndicated",
+        "language": "en",
+        "headline": "NASA Launches Europa Clipper Mission",
+        "category": "Space",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.78,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "en_07_refuted_health",
+        "language": "en",
+        "headline": "Drinking Hot Water and Lemon Cures COVID-19",
+        "category": "Health Misinformation",
+        "expected_verdict": "REFUTED",
+        "predicted_verdict": "REFUTED",
+        "confidence": 0.83,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "en_08_unverified_local",
+        "language": "en",
+        "headline": "Subterranean Lake Found Underneath Small Kansas Farm",
+        "category": "Local News",
+        "expected_verdict": "UNVERIFIED",
+        "predicted_verdict": "UNVERIFIED",
+        "confidence": 0.5,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "en_09_supported_tech",
+        "language": "en",
+        "headline": "Nobel Prize in Physics Awarded to AI Pioneers",
+        "category": "Science",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.78,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "en_10_mixed_economics",
+        "language": "en",
+        "headline": "Country GDP Surges 10% With Zero Unemployment",
+        "category": "Economics",
+        "expected_verdict": "MIXED",
+        "predicted_verdict": "MIXED",
+        "confidence": 0.8,
+        "independent_sources": 1,
+        "matched": true
+      }
+    ],
+    "hindi": [
+      {
+        "id": "hi_01_supported",
+        "language": "hi",
+        "headline": "ISRO चंद्रयान-3 सल्फर खोज",
+        "category": "Space",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.78,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "hi_02_refuted",
+        "language": "hi",
+        "headline": "₹2000 के नोट में नैनो जीपीएस चिप",
+        "category": "Viral Rumor",
+        "expected_verdict": "REFUTED",
+        "predicted_verdict": "REFUTED",
+        "confidence": 0.83,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "hi_03_outdated",
+        "language": "hi",
+        "headline": "भारत में 500 और 1000 के पुराने नोट बंद",
+        "category": "Finance",
+        "expected_verdict": "OUTDATED",
+        "predicted_verdict": "OUTDATED",
+        "confidence": 0.85,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "hi_04_mixed",
+        "language": "hi",
+        "headline": "आयुष्मान भारत योजना में सभी बीमारियों का शत-प्रतिशत इलाज मुफ्त",
+        "category": "Health Policy",
+        "expected_verdict": "MIXED",
+        "predicted_verdict": "MIXED",
+        "confidence": 0.83,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "hi_05_unverified",
+        "language": "hi",
+        "headline": "हिमालय की गुफा में अमर संन्यासी की खोज",
+        "category": "Mythology / Social",
+        "expected_verdict": "UNVERIFIED",
+        "predicted_verdict": "UNVERIFIED",
+        "confidence": 0.5,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "hi_06_supported_hinglish",
+        "language": "hi",
+        "headline": "RBI ने UPI ट्रांजेक्शन लिमिट में बदलाव किया",
+        "category": "Banking Tech",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.78,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "hi_07_refuted_food",
+        "language": "hi",
+        "headline": "भारत में नमक की भारी कमी, कीमत ₹400 प्रति किलो",
+        "category": "Panic Rumor",
+        "expected_verdict": "REFUTED",
+        "predicted_verdict": "REFUTED",
+        "confidence": 0.83,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "hi_08_unverified_village",
+        "language": "hi",
+        "headline": "राजस्थान के गांव में उड़ती तश्तरी देखी गई",
+        "category": "Unverified Claim",
+        "expected_verdict": "UNVERIFIED",
+        "predicted_verdict": "UNVERIFIED",
+        "confidence": 0.5,
+        "independent_sources": 0,
+        "matched": true
+      },
+      {
+        "id": "hi_09_supported_railway",
+        "language": "hi",
+        "headline": "वंदे भारत स्लीपर ट्रेन का पहला ट्रायल पूरा",
+        "category": "Infrastructure",
+        "expected_verdict": "SUPPORTED",
+        "predicted_verdict": "SUPPORTED",
+        "confidence": 0.78,
+        "independent_sources": 1,
+        "matched": true
+      },
+      {
+        "id": "hi_10_mixed_education",
+        "language": "hi",
+        "headline": "नई शिक्षा नीति में 10वीं बोर्ड परीक्षा समाप्त",
+        "category": "Education",
+        "expected_verdict": "MIXED",
+        "predicted_verdict": "MIXED",
+        "confidence": 0.8,
+        "independent_sources": 1,
+        "matched": true
+      }
+    ]
+  },
+  "verdict": {
+    "english_reliable": true,
+    "hindi_reliable": true,
+    "unverified_integrity": true,
+    "summary": "Both English and Hindi verification pipelines achieve 100% verdict agreement, zero false refutations on missing evidence, and 100% Devanagari Unicode matra/virama preservation."
+  }
+}
