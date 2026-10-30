@@ -1,327 +1,494 @@
-# TruthLens 2.0: AI-Powered Multilingual News Verification & Credibility Platform
+# TruthLens
 
-[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6.svg)](https://www.typescriptlang.org/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg)](https://tailwindcss.com/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.15+-EE4C2C.svg)](https://pytorch.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-llama3.2-black.svg)](https://ollama.ai/)
-[![Scikit--Learn](https://img.shields.io/badge/scikit--learn-1.4+-F7931E.svg)](https://scikit-learn.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**Evidence-based, multilingual news and claim verification**
 
-**TruthLens 2.0** is an enterprise-ready, multilingual news verification and credibility platform. Departing from simple stylistic text classification, TruthLens 2.0 investigates submitted news articles, headlines, URLs, and social claims using **live dynamic web evidence retrieval**, **atomic claim extraction**, **wire syndication clustering**, and **natural language inference (NLI)**. Every analysis compiles a transparent verification audit trail with original publisher links, exact verbatim quotations, and calibrated confidence metrics.
+TruthLens is a web application that helps users examine factual claims
+in news articles, headlines, URLs, and short text. Instead of deciding
+whether a story is true from writing style alone, its primary
+verification workflow extracts checkable claims, searches for relevant
+external reporting, evaluates evidence with a multilingual
+natural-language-inference (NLI) model, and produces a report that users
+can inspect.
 
----
+> **Important:** TruthLens is an assistive verification tool, not an
+> authoritative fact-checking organization. Its verdicts depend on the
+> quality, availability, language coverage, and freshness of retrieved
+> sources. Always inspect the cited sources and use human judgment for
+> consequential decisions.
 
-## Table of Contents
-- [Dual-Engine Product Architecture](#dual-engine-product-architecture)
-- [Key Features](#key-features)
-- [Verdict Categories](#verdict-categories)
-- [Multilingual Support (English & Hindi)](#multilingual-support-english--hindi)
-- [System Architecture](#system-architecture)
-- [Empirical Benchmarks](#empirical-benchmarks)
-  - [TruthLens 2.0 Multilingual Evaluation Suite](#truthlens-20-multilingual-evaluation-suite)
-  - [Local Ollama LLM Benchmark](#local-ollama-llm-benchmark)
-  - [TruthLens 1.0 Legacy ML Classification Benchmark](#truthlens-10-legacy-ml-classification-benchmark)
-- [Project Structure](#project-structure)
-- [Local Development Quickstart](#local-development-quickstart)
-- [Running the Test Suites](#running-the-test-suites)
-- [API Reference](#api-reference)
-- [Deployment Guide](#deployment-guide)
-- [Scientific & Ethical Fact-Checking Advisory](#scientific--ethical-fact-checking-advisory)
+------------------------------------------------------------------------
 
----
+## Contents
 
-## Dual-Engine Product Architecture
+-   [What TruthLens does](#what-truthlens-does)
+-   [Features](#features)
+-   [Verification workflow](#verification-workflow)
+-   [Verdict categories](#verdict-categories)
+-   [Languages](#languages)
+-   [Architecture and technology](#architecture-and-technology)
+-   [Repository structure](#repository-structure)
+-   [Local setup](#local-setup)
+-   [Configuration](#configuration)
+-   [Running the application](#running-the-application)
+-   [Tests and evaluation](#tests-and-evaluation)
+-   [API overview](#api-overview)
+-   [Known limitations](#known-limitations)
+-   [Responsible use](#responsible-use)
 
-TruthLens integrates two complementary analytical engines:
+------------------------------------------------------------------------
 
+## What TruthLens does
+
+A user submits a news article, headline, URL, or claim. TruthLens
+attempts to:
+
+1.  Extract individual factual claims that can be checked.
+2.  Search external sources for potentially relevant evidence.
+3.  retrieve and rank source passages for each claim.
+4.  Compare evidence with claims using a multilingual NLI model.
+5.  Generate a structured report containing verdicts, evidence,
+    quotations, and source links.
+
+The evidence-based verification workflow is the primary product. A
+separate legacy machine-learning classifier is retained for comparison
+and educational purposes; its stylistic prediction must not be treated
+as evidence that a factual claim is true or false.
+
+## Features
+
+-   **Claim extraction:** Uses a locally hosted Ollama model
+    (`llama3.2:latest`) when available, with rule-based fallback
+    behavior.
+-   **Evidence discovery:** Integrates configurable SearXNG search,
+    GDELT, and RSS sources.
+-   **Evidence retrieval and ranking:** Collects source material and
+    ranks passages for relevance to extracted claims.
+-   **Multilingual NLI:** Uses
+    `MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli` to estimate
+    entailment, neutrality, and contradiction between evidence and
+    claims.
+-   **Source transparency:** Reports source links and supporting
+    quotations so users can inspect the underlying material.
+-   **Syndication handling:** Attempts to avoid counting near-identical
+    syndicated coverage as independent corroboration.
+-   **Conservative verdict behavior:** Insufficient evidence should
+    result in `UNVERIFIED`, not an automatic false or refuted verdict.
+-   **Guest verification support:** Supports guest-session workflows
+    with server-issued identifiers and claim tokens.
+-   **User experience:** Includes verification progress, report views,
+    history, dashboard views, and evidence exploration.
+-   **Legacy ML module:** Preserves the earlier TF-IDF/classifier
+    workflow as a separate analysis path.
+
+Feature availability can depend on configuration and the external
+services reachable from the environment.
+
+## Verification workflow
+
+``` text
+User input
+   |
+   v
+Input validation and language handling
+   |
+   v
+Atomic claim extraction
+   |
+   v
+Search query generation and evidence discovery
+   |
+   v
+Publisher-page retrieval and text extraction
+   |
+   v
+Passage ranking and syndication deduplication
+   |
+   v
+Multilingual NLI comparison
+   |
+   v
+Verdict synthesis and report generation
+   |
+   v
+Inspectable verification report
 ```
-                                  USER SUBMISSION
-                          (Text, Headline, URL, Social)
-                                        │
-             ┌──────────────────────────┴──────────────────────────┐
-             ▼                                                     ▼
-┌───────────────────────────────┐     ┌─────────────────────────────────────────┐
-│     TRUTHLENS 2.0 (LIVE)      │     │         TRUTHLENS 1.0 (LEGACY)          │
-│ Multilingual Evidence Engine  │     │       Stylistic ML Classifier           │
-├───────────────────────────────┤     ├─────────────────────────────────────────┤
-│ • Script ID & Devanagari Norm │     │ • Unified Preprocessing (clean, stop)   │
-│ • Atomic Claim Deconstruction │     │ • TF-IDF Vectorizer (10k n-grams)       │
-│ • Multi-Tier Live Web Search  │     │ • Logistic Regression & Random Forest   │
-│ • SSRF-Hardened Article Fetch │     │ • Explainable AI (Token Attribution)    │
-│ • Overlapping Sentence Chunker│     │ • Evaluates stylistic sensationalism    │
-│ • Wire Syndication Dedup      │     │                                         │
-│ • Multilingual NLI on CPU     │     │                                         │
-│ • 5-State Verdict Synthesis   │     │                                         │
-│ • Verbatim Quotation Audit    │     │                                         │
-└───────────────────────────────┘     └─────────────────────────────────────────┘
-             │                                                     │
-             ▼                                                     ▼
-┌───────────────────────────────┐     ┌─────────────────────────────────────────┐
-│ Live Verification Report      │     │ Stylistic Credibility Score             │
-│ (SUPPORTED / REFUTED / etc.)  │     │ (LIKELY REAL / LIKELY FAKE)             │
-└───────────────────────────────┘     └─────────────────────────────────────────┘
-```
 
-1. **TruthLens 2.0 (Primary Path)**: Fact-checks the factual veracity of claims against live external internet evidence. It answers: *"Does verifiable reporting corroborate or contradict these facts?"*
-2. **TruthLens 1.0 (Supplementary Path)**: Analyzes linguistic patterns, clickbait markers, and writing style against trained classifiers. It answers: *"Does the writing style correlate with sensationalized or authentic journalism?"*
+Search results are discovery signals, not proof. The verification
+pipeline should rely on retrieved source content rather than search
+snippets alone. NLI scores are model outputs; they are not probabilities
+that a claim is objectively true.
 
----
+## Verdict categories
 
-## Key Features
+  -----------------------------------------------------------------------
+  Verdict                             Meaning
+  ----------------------------------- -----------------------------------
+  `SUPPORTED`                         Retrieved evidence supports the
+                                      claim.
 
-- **Multilingual Support**: First-class support for English (`en`) and Hindi (`hi`), including full Devanagari script preservation and Hinglish code-mixing detection.
-- **Atomic Claim Extraction**: Deconstructs complex paragraphs into checkable, falsifiable propositions using local Ollama (`llama3.2:latest`) with deterministic rule fallback.
-- **Multi-Tier Live Search**: Queries local or external SearXNG HTTP endpoints, GDELT 2.0 DOC API, and curated RSS feeds without requiring Docker.
-- **Wire-Service Syndication Clustering**: Employs 3-gram character Jaccard similarity to prevent syndicated wire copies (e.g., PTI, ANI, Reuters, AP) from falsely inflating confirmation counts.
-- **Multilingual NLI Verifier**: Evaluates premise-hypothesis entailment and contradiction using the lightweight multilingual transformer `MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli` (6 layers, ~420 MB, CPU optimized), capped to 4 CPU threads. Model loads in 3.03s and runs inference in 18ms–44ms per pair with peak RAM of 421.49 MB.
-- **Zero-False-Refutation Policy**: Missing evidence is strictly assigned **`UNVERIFIED`**—the system never assumes a claim is fake simply because corroborating articles are scarce.
-- **SSRF-Protected Scraper**: Validates DNS resolutions and every individual redirect hop against private and link-local CIDR ranges.
-- **Interactive UI & Progress Monitor**: React 18 single-page application with real-time job status polling, animated progress bars, confidence meters, and filterable quotation cards.
+  `REFUTED`                           Retrieved evidence directly
+                                      contradicts the claim.
 
----
+  `MIXED`                             Evidence supports some aspects
+                                      while contradicting or disputing
+                                      others.
 
-## Verdict Categories
+  `OUTDATED`                          The claim or report may have been
+                                      accurate in the past but is no
+                                      longer current in the relevant
+                                      context.
 
-TruthLens 2.0 evaluates evidence to produce one of 5 transparent verdicts:
+  `UNVERIFIED`                        Available evidence is insufficient,
+                                      inconclusive, or unavailable.
+  -----------------------------------------------------------------------
 
-| Verdict | Meaning | Evidence Standard |
-| :--- | :--- | :--- |
-| **`SUPPORTED`** | Verified Authentic | Corroborated by independent authoritative publishers with consistent facts. |
-| **`REFUTED`** | Debunked / False | Directly contradicted or debunked by authoritative investigative sources. |
-| **`MIXED`** | Partial / Disputed | Supported in certain aspects but refuted in others; conflicting accounts found. |
-| **`OUTDATED`** | Genuine but Historical | Accurate reporting from $\ge 3$ years ago misleadingly recirculated as breaking news. |
-| **`UNVERIFIED`** | Insufficient Evidence | Passages lack conclusive entailment or refutation; no definitive confirmation found. |
+A verdict is an automated assessment of the evidence retrieved during a
+particular run. It can change as sources, search coverage, and the
+underlying facts change.
 
----
+## Languages
 
-## Multilingual Support (English & Hindi)
+The current verification work focuses on:
 
-TruthLens 2.0 includes a specialized NLP registry and custom normalizers (`backend/app/nlp/`):
-- **Devanagari Orthography**: `HindiNormalizer` preserves complete vowel signs (matras: `ा`, `ि`, `ी`, `ु`, `ू`, `े`, `ै`, `ो`, `ौ`), halant/virama (`्`), anusvara (`ं`), and sentence dandas (`।`, `॥`).
-- **Code-Mixing (Hinglish)**: Script detection calculates Latin-to-Devanagari character ratios to identify Hinglish news text and route to appropriate tokenizers.
-- **Devanagari Numerals**: Automatically translates numerals (`०-९`) to standard digits (`0-9`) while preserving the surrounding semantic context.
-- **Extensible Architecture**: Language profile interfaces ready for Bengali (`bn`), Marathi (`mr`), Spanish (`es`), and French (`fr`).
+-   **English (`en`)**
+-   **Hindi (`hi`)**, including Devanagari text and normalization of
+    Hindi-specific characters.
 
----
+The NLP layer includes handling for Devanagari vowel signs, virama,
+anusvara, danda punctuation, and Devanagari numerals. Hinglish or other
+code-mixed text may require additional evaluation and should not be
+assumed to have the same reliability as standard English or Hindi input.
 
-## Empirical Benchmarks
+The architecture may be extended to other languages, but a language
+should only be described as supported after its retrieval sources,
+normalization, and verification quality have been evaluated.
 
-### TruthLens 2.0 Multilingual Evaluation Suite
-Evaluated against a curated, manually reviewed benchmark of **10 English and 10 Hindi test cases** spanning political, scientific, economic, viral rumors, outdated events, and zero-evidence cases:
+## Architecture and technology
 
-| Language | Test Cases | Accuracy | Matra Failures | False Refutations | Benchmark Latency |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **English (`en`)** | 10 | **100.0%** (10/10) | N/A | **0** | 0.28s / claim |
-| **Hindi (`hi`)** | 10 | **100.0%** (10/10) | **0** | **0** | 0.32s / claim |
-| **Overall Pipeline** | 20 | **100.0%** (20/20) | **0** | **0** | 6.06s total |
+  -----------------------------------------------------------------------
+  Layer                               Technology
+  ----------------------------------- -----------------------------------
+  Frontend                            React 18, TypeScript, Vite,
+                                      Tailwind CSS
 
-Full benchmark metrics recorded in `ml/results/multilingual_evaluation_report.json`.
+  Backend API                         Python, FastAPI, Pydantic
 
----
+  Persistence                         SQLAlchemy and Alembic; SQLite for
+                                      local use, with
+                                      PostgreSQL-compatible configuration
 
-### Local Ollama LLM Benchmark
-Benchmarked directly on the host machine (**16 GB RAM, Intel integrated graphics, CPU-only**):
+  Local language model                Ollama with `llama3.2:latest`
 
-| Metric | Measured Observation | Status |
-| :--- | :--- | :--- |
-| **Model** | `llama3.2:latest` (3.2B parameters, Q4_K_M) | **Selected & Active** |
-| **Disk Size** | 2.02 GB | Verified |
-| **Peak RAM Footprint Added** | **1,149 MB** (Total: 14.2 GB / 15.7 GB) | Fits 16 GB ceiling |
-| **JSON Schema Adherence** | **100%** compliance with Pydantic claim schema | Verified |
-| **English Extraction Latency** | 29.30s (cold) / ~14s (warm) | Verified |
-| **Hindi Extraction Latency** | 15.54s (warm) | Verified |
+  Evidence reasoning                  Hugging Face Transformers / PyTorch
+                                      multilingual NLI model
 
-Full benchmark data logged in `ml/results/ollama_benchmark_results.json`.
+  Search and discovery                Configurable SearXNG, GDELT, and
+                                      RSS sources
 
----
+  Legacy classifier                   scikit-learn and TF-IDF
+  -----------------------------------------------------------------------
 
-### TruthLens 1.0 Legacy ML Classification Benchmark
-Evaluated on 6,493 holdout test samples from the ISOT dataset (stratified 80/20 train/test split):
+### Important model separation
 
-| Model Architecture | Accuracy | Precision | Recall | F1-Score | Latency / Query |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Logistic Regression (Production)** | **97.71%** | **98.31%** | **97.44%** | **97.88%** | **0.0005 ms** |
-| Random Forest (Alternative) | 98.12% | 99.10% | 97.42% | 98.25% | 0.0201 ms |
-| Neural Network (MLP) | 97.55% | 97.81% | 97.67% | 97.74% | 0.0112 ms |
-| K-Nearest Neighbors (KNN) | 91.42% | 91.49% | 92.82% | 92.15% | 0.5059 ms |
+The evidence-verification workflow is the source of factual verdicts.
+The legacy stylistic classifier is a separate feature and must not be
+used to override, strengthen, or weaken evidence-based verdicts.
 
----
+## Repository structure
 
-## Project Structure
-
-```
-truthlens/
+``` text
+TruthLens/
 ├── backend/
-│   ├── alembic/                      # Database migration scripts (001_initial, 002_evidence_verification)
+│   ├── alembic/                 # Database migrations
 │   ├── app/
-│   │   ├── api/v1/                   # REST Endpoints (auth, analyze, verify, dashboard, models)
-│   │   ├── core/                     # Configuration, security, JWT
-│   │   ├── database/                 # SQLAlchemy engine, session
-│   │   ├── models/                   # User, Article, Analysis, VerificationJob, VerificationClaimRecord
-│   │   ├── nlp/                      # Multilingual registry, Hindi & English normalizers
-│   │   ├── schemas/                  # Pydantic models (claim, evidence, search, verification)
-│   │   ├── services/                 # Claim extractor, search service, evidence collector, NLI verifier, verdict engine, orchestrator
-│   │   └── ml/                       # Legacy ML predictors, artifacts, Ollama client
-│   └── tests/                        # Pytest suite (NLP, Claim, Search, Evidence, NLI, API, Verification)
+│   │   ├── api/v1/              # API routes
+│   │   ├── core/                # Configuration and security
+│   │   ├── database/            # Database setup and sessions
+│   │   ├── models/              # SQLAlchemy models
+│   │   ├── nlp/                 # Language handling and normalization
+│   │   ├── schemas/              # Pydantic request/response schemas
+│   │   ├── services/             # Extraction, retrieval, NLI, verdicts, reports
+│   │   └── ml/                   # Legacy ML and Ollama integration
+│   └── tests/                    # Backend tests
 ├── frontend/
-│   ├── src/
-│   │   ├── components/               # UI components, modals, alerts, cards
-│   │   ├── layouts/                  # Navbar, footer, main layout
-│   │   ├── pages/                    # VerifyPage, VerificationReportPage, AnalyzePage, Dashboard, etc.
-│   │   ├── services/                 # API clients (verificationApi, api)
-│   │   ├── types/                    # TypeScript interfaces (verification, api)
-│   │   └── tests/                    # Vitest UI tests (verification, forms, navigation, analyze)
+│   └── src/
+│       ├── components/           # Reusable UI components
+│       ├── layouts/              # Application layouts
+│       ├── pages/                # Application pages
+│       ├── services/             # Backend API clients
+│       ├── types/                # TypeScript types
+│       └── tests/                # Frontend tests
 ├── ml/
-│   ├── experiments/                  # Ollama benchmark, multilingual evaluation pipeline
-│   ├── notebooks/                    # Original ML research notebooks (preserved)
-│   └── results/                      # Audit results, benchmark outputs
-├── ARCHITECTURE.md                   # Complete architectural specification & sequence diagrams
-├── README.md                         # Product guide & developer manual
-└── pytest.ini                        # Test runner configuration
+│   ├── experiments/              # Evaluation and benchmark scripts
+│   ├── notebooks/                # Research notebooks
+│   └── results/                  # Evaluation outputs, when present
+├── docs/                         # Project documentation and reports
+├── .env.example                  # Example environment configuration
+└── README.md
 ```
 
----
+Some files may differ as the project evolves. Treat the current
+repository tree and source code as authoritative.
 
-## Local Development Quickstart
+## Local setup
 
 ### Prerequisites
-- **Python 3.12+**
-- **Node.js 18+** & **npm**
-- **Ollama** installed and running locally (`http://127.0.0.1:11434`) with model `llama3.2:latest`
 
-### Step 1: Clone and Configure Environment
-```bash
-# Copy example environment configuration
+-   Python 3.12+
+-   Node.js 18+ and npm
+-   Git
+-   Ollama, if you want to use local LLM-based claim extraction
+-   Sufficient RAM and disk space for the local language and NLI models
+
+### 1. Clone the repository
+
+``` bash
+git clone https://github.com/rahulx1515/TruthLens.git
+cd TruthLens
+```
+
+### 2. Configure environment variables
+
+Copy the example configuration:
+
+**Windows PowerShell**
+
+``` powershell
+Copy-Item .env.example .env
+```
+
+**macOS / Linux**
+
+``` bash
 cp .env.example .env
 ```
 
-### Step 2: Install Backend Dependencies
-```bash
+Review `.env.example` and set the values required by your environment.
+Do not commit `.env` or paste secrets into issue reports.
+
+### 3. Install backend dependencies
+
+From the repository root:
+
+``` bash
+python -m venv .venv
+```
+
+Activate the environment:
+
+**Windows PowerShell**
+
+``` powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux**
+
+``` bash
+source .venv/bin/activate
+```
+
+Install dependencies:
+
+``` bash
+python -m pip install --upgrade pip
 python -m pip install -r backend/requirements.txt
 ```
 
-### Step 3: Run Database Migrations
-```bash
+### 4. Configure and migrate the database
+
+From the repository root:
+
+``` bash
 cd backend
 alembic upgrade head
 cd ..
 ```
 
-### Step 4: Pull Local LLM Model (Ollama)
-Ensure the Ollama application is active on your host machine:
-```bash
+Make sure the backend environment configuration points to the database
+you intend to use. For local development, use the SQLite configuration
+supplied by the project.
+
+### 5. Set up Ollama (optional, for local LLM extraction)
+
+Install and start Ollama, then pull the configured model:
+
+``` bash
 ollama pull llama3.2:latest
 ```
 
-### Step 5: Start the Backend Server
-From the project root:
-```bash
-python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
-```
-- API Documentation (Swagger): `http://127.0.0.1:8000/docs`
-- Health check: `http://127.0.0.1:8000/health`
+Confirm that Ollama is reachable at the configured base URL (commonly
+`http://127.0.0.1:11434`). If Ollama is unavailable, the application may
+use its configured fallback behavior; LLM-dependent output may differ.
 
-### Step 6: Start the Frontend Application
-In a separate terminal:
-```bash
+### 6. Install frontend dependencies
+
+``` bash
 cd frontend
 npm install
+cd ..
+```
+
+## Configuration
+
+Use `.env.example` as the source of truth for supported environment
+variables. Common configuration areas include:
+
+-   Database connection URL
+-   JWT/authentication settings
+-   Ollama base URL and model name
+-   Search provider endpoints and enablement
+-   CORS / frontend origin settings
+-   Request and retrieval limits
+
+Do not assume a provider is configured just because its integration
+exists in the code. Search availability depends on valid configuration
+and network access. Never commit credentials, API keys, `.env` files,
+private keys, or production secrets.
+
+## Running the application
+
+Open two terminals from the repository root.
+
+### Backend
+
+``` bash
+python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+```
+
+-   API base URL: `http://127.0.0.1:8000`
+-   Swagger documentation: `http://127.0.0.1:8000/docs`
+-   ReDoc: `http://127.0.0.1:8000/redoc`
+
+The health endpoint is defined by the backend application; check the
+route implementation if the path differs in your checkout.
+
+### Frontend
+
+``` bash
+cd frontend
 npm run dev
 ```
-- Web Application: `http://localhost:5173`
-- Direct Live Verification UI: `http://localhost:5173/verify`
 
----
+Vite prints the local URL in the terminal (commonly
+`http://localhost:5173`). Open that URL in your browser.
 
-## Running the Test Suites
+## Tests and evaluation
 
-### 1. Comprehensive Backend Unit Tests (46 tests)
-Tests NLP normalizers, claim extraction, search service, passage chunking, syndication deduplication, NLI verdict synthesis, and legacy ML preprocessing:
-```bash
-python -m pytest backend/tests/test_nlp_multilingual.py backend/tests/test_claim_extractor.py backend/tests/test_search_service.py backend/tests/test_evidence_services.py backend/tests/test_nli_verdict_pipeline.py backend/tests/test_ml_preprocessing.py backend/tests/test_ml_predictor.py -v
+Run the test suites from the repository root, using the test paths that
+exist in your checkout.
+
+### Backend
+
+``` bash
+python -m pytest backend/tests -v
 ```
 
-### 2. Backend API Integration Tests (12 tests)
-Tests authentication, legacy credibility prediction, user history isolation, and TruthLens 2.0 verification job lifecycle:
-```bash
-python -m pytest backend/tests/test_api_integration.py backend/tests/test_verification_api.py -v
-```
+### Frontend
 
-### 3. Frontend Vitest Tests (9 tests)
-Tests verification input forms, polling monitor, evidence explorer, authentication forms, and navigation:
-```bash
+``` bash
 cd frontend
 npm test -- --run
 ```
 
-### 4. Multilingual 20-Case Verification Benchmark Suite
-Runs the full end-to-end verification engine across 10 English and 10 Hindi news claims:
-```bash
-python ml/experiments/evaluate_multilingual_pipeline.py
-```
+### Frontend production build
 
-### 5. Frontend Production Build Check
-```bash
-cd frontend
+``` bash
 npm run build
 ```
 
----
+### Evaluation scripts
 
-## API Reference
+The `ml/experiments/` directory contains evaluation and benchmark
+scripts. Run a script only after checking its inputs, expected runtime,
+and output paths. Keep benchmark datasets separate from training data
+and document the evaluation method when publishing results.
 
-### TruthLens 2.0: Evidence Verification Endpoints
-- `POST /api/v1/verify` — Submit a news text, headline, or URL for live evidence-based verification.
-  ```json
-  {
-    "text": "The Federal Reserve maintained benchmark interest rates at 5.25% on Wednesday.",
-    "headline": "Federal Reserve Holds Rates at 5.25%",
-    "language": "en"
-  }
-  ```
-  Returns: `{ "job_id": "...", "status": "QUEUED", "progress": 0 }`
-- `GET /api/v1/verify/{id}/status` — Poll current job state machine progress (`QUEUED`, `EXTRACTING`, `SEARCHING`, `RETRIEVING`, `VERIFYING`, `GENERATING_REPORT`, `COMPLETED`, `FAILED`).
-- `GET /api/v1/verify/{id}` — Retrieve the completed verification audit report with final verdict, claim breakdowns, and evidence quotations.
-- `POST /api/v1/verify/{id}/retry` — Safely retry a failed verification job.
-- `GET /api/v1/verify` — Paginated history of verification jobs.
+### Interpreting existing benchmark results
 
-### TruthLens 1.0: Legacy Stylistic Analysis Endpoints
-- `POST /api/v1/analyze` — Evaluate news credibility from headline, text, or URL using scikit-learn models.
-- `GET /api/v1/analyses` — Paginated analysis history.
-- `GET /api/v1/analyses/{id}` — Detailed report with token-level Explainable AI attributions.
-- `GET /api/v1/dashboard/stats` — Real-time analytics, 7-day volume trends, and credibility distribution.
-- `GET /api/v1/models/performance` — Audited classification confusion matrices, F1-scores, and latency.
+The repository may include small manually curated evaluation sets and
+local-machine performance measurements. These are useful for regression
+checks, but they do not establish production-grade accuracy or
+calibrated confidence. In particular:
 
-### Authentication
-- `POST /api/v1/auth/register` — Register a new user account.
-- `POST /api/v1/auth/login` — Sign in and obtain a JWT bearer token.
-- `GET /api/v1/auth/me` — Retrieve the authenticated profile.
+-   A result on 10 English and 10 Hindi examples is a small preliminary
+    evaluation, not evidence of broad real-world accuracy.
+-   Latency and memory measurements depend on hardware, model cache
+    state, input length, and batch size.
+-   NLI entailment/contradiction scores are not calibrated truth
+    probabilities.
+-   Legacy classifier metrics apply only to that classifier and its
+    evaluation dataset; they do not measure the evidence-verification
+    pipeline.
 
----
+When reporting results, include dataset size, language, sampling method,
+hardware, cold/warm state, and the exact command used.
 
-## Deployment Guide
+## API overview
 
-TruthLens is fully designed for local execution and self-hosting:
+The API is versioned under `/api/v1`. The exact request and response
+schemas are defined in the backend source and can be inspected through
+Swagger at `/docs` while the backend is running.
 
-### Local / Server Multi-Container (Docker Compose)
-To spin up the complete stack with local PostgreSQL:
-```bash
-docker-compose up --build -d
+The verification API includes routes for submitting verification jobs,
+checking job status, retrieving reports, retrying eligible failed jobs,
+and viewing verification history. Authentication, dashboard, and legacy
+analysis routes are also present in the API layer.
+
+Example verification request shape (confirm the current schema in
+Swagger before use):
+
+``` json
+{
+  "text": "Paste a factual claim or news text here.",
+  "language": "en"
+}
 ```
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:8000`
-- Database: `localhost:5432`
 
----
+## Known limitations
 
-## Scientific & Ethical Fact-Checking Advisory
+-   **Search coverage:** Search providers can be unavailable,
+    rate-limited, incomplete, or biased toward particular publishers and
+    languages.
+-   **Source quality:** A retrieved page is not automatically
+    authoritative. Users should assess the publisher, date, original
+    reporting, and context.
+-   **Retrieval errors:** Relevant evidence may be missed, and
+    irrelevant or duplicated passages may be retrieved.
+-   **NLI limitations:** The multilingual NLI model can misread
+    negation, dates, numbers, attribution, causality, and nuanced
+    language.
+-   **Confidence interpretation:** Any confidence value shown by the
+    application is a system heuristic unless separately calibrated and
+    validated. It must not be interpreted as the probability that a
+    claim is true.
+-   **Language coverage:** English and Hindi are the primary target
+    languages; code-mixed and other-language performance requires
+    separate evaluation.
+-   **Performance:** Local inference can be slow on CPU-only machines,
+    particularly during model loading or long verification runs.
+-   **Temporal claims:** Whether a claim is outdated depends on the time
+    context and the quality of available dated evidence.
+-   **No guarantee of completeness:** A report reflects evidence found
+    during that run, not every source that exists.
 
-> [!IMPORTANT]
-> **Factual Claim Verification vs. Opinion**: TruthLens 2.0 is designed to verify falsifiable factual assertions using corroborated web reporting. It does not judge subjective political viewpoints, satire, or value judgments.
-> 
-> **Zero-False-Refutation Policy**: Absence of retrieved internet evidence is NEVER treated as proof of falsehood. If the search returns no reputable reporting or evidence is inconclusive, TruthLens assigns **`UNVERIFIED`** rather than claiming an article is fake.
-> 
-> **Human-in-the-Loop Verification**: Automated verification outputs should serve as an assistive intelligence tool alongside human editorial review and domain expertise.
+## Responsible use
+
+TruthLens is designed to assist research and critical reading. It is not
+a substitute for professional fact-checking, legal advice, medical
+advice, or editorial judgment.
+
+-   Verify important claims against the original sources.
+-   Distinguish factual assertions from opinions, predictions, satire,
+    and interpretations.
+-   Treat `UNVERIFIED` as "not established from the available evidence,"
+    not as "false."
+-   Do not use an automated verdict as the sole basis for decisions that
+    could harm a person or organization.
+-   Respect source terms, copyright, privacy, and applicable laws when
+    retrieving or sharing content.
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE)
+for details.
