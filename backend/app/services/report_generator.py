@@ -1,7 +1,8 @@
 """
-TruthLens 2.0 - Report Synthesis Generator
+TruthLens - Report Synthesis Generator
 Synthesizes comprehensive verification reports with transparent audit trails,
-exact extracted quotations, distinct publication/retrieval dates, and verified clickable URLs.
+exact extracted quotations, distinct publication/retrieval dates, verified clickable URLs,
+and prominent "Why this verdict?" explanations.
 """
 from datetime import datetime, timezone
 import logging
@@ -34,7 +35,9 @@ class ReportGenerator:
         detected_language: str,
         is_code_mixed: bool,
         claim_results: List[ClaimVerificationResult],
-        search_providers_used: List[str]
+        search_providers_used: List[str],
+        extraction_method: str = "llm",
+        nli_inference_method: str = "neural"
     ) -> VerificationReport:
         """
         Synthesizes the complete VerificationReport.
@@ -52,11 +55,11 @@ class ReportGenerator:
         claims_unverified = sum(1 for c in claim_results if c.verdict == FinalVerdict.UNVERIFIED)
         claims_outdated = sum(1 for c in claim_results if c.verdict == FinalVerdict.OUTDATED)
 
-        # Compute overall confidence
+        # Compute overall confidence (reflects evidence corroboration, 0.0 when unverified)
         if claim_results:
             overall_confidence = round(sum(c.confidence for c in claim_results) / len(claim_results), 2)
         else:
-            overall_confidence = 0.50
+            overall_confidence = 0.0
 
         # Synthesize executive summary
         summary = self._synthesize_summary(
@@ -67,6 +70,12 @@ class ReportGenerator:
             lang=detected_language
         )
 
+        # Build "Why this verdict?" explanation
+        why_this_verdict = self._synthesize_why_verdict(overall_verdict, claim_results, detected_language)
+
+        # Build limitations and uncertainty statement
+        limitations = self._synthesize_limitations(claim_results, detected_language)
+
         return VerificationReport(
             verification_id=report_id,
             original_title=original_title,
@@ -76,6 +85,10 @@ class ReportGenerator:
             overall_verdict=overall_verdict,
             overall_confidence=overall_confidence,
             executive_summary=summary,
+            why_this_verdict=why_this_verdict,
+            limitations_and_uncertainty=limitations,
+            extraction_method=extraction_method,
+            nli_inference_method=nli_inference_method,
             claims_total=claims_total,
             claims_supported=claims_supported,
             claims_refuted=claims_refuted,
@@ -86,6 +99,55 @@ class ReportGenerator:
             created_at=now_iso
         )
 
+    def _synthesize_why_verdict(
+        self, verdict: FinalVerdict, claim_results: List[ClaimVerificationResult], lang: str
+    ) -> str:
+        """Clear explanation of why this specific overall verdict was awarded."""
+        sup = sum(1 for c in claim_results if c.verdict == FinalVerdict.SUPPORTED)
+        ref = sum(1 for c in claim_results if c.verdict == FinalVerdict.REFUTED)
+        unv = sum(1 for c in claim_results if c.verdict == FinalVerdict.UNVERIFIED)
+
+        if lang == "hi":
+            if verdict == FinalVerdict.SUPPORTED:
+                return f"सभी मुख्य दावों ({sup}) को स्वतंत्र समाचार प्रकाशकों और आधिकारिक बयानों द्वारा प्रत्यक्ष रूप से समर्थित पाया गया।"
+            elif verdict == FinalVerdict.REFUTED:
+                return f"प्रस्तुत दावों ({ref}) का विश्वसनीय आधिकारिक साक्ष्यों और तथ्यों द्वारा प्रत्यक्ष रूप से खंडन किया गया है।"
+            elif verdict == FinalVerdict.MIXED:
+                return f"समाचार में कुछ दावे ({sup}) समर्थित हैं जबकि अन्य ({ref}) गलत या असत्यापित पाए गए हैं।"
+            elif verdict == FinalVerdict.OUTDATED:
+                return "जांचे गए दावे वास्तविक पुरानी घटनाओं से संबंधित हैं, जिन्हें वर्तमान संदर्भ के बिना भ्रामक रूप से प्रस्तुत किया गया।"
+            else:
+                return "सार्वजनिक रूप से उपलब्ध साक्ष्य इन दावों की निश्चित रूप से पुष्टि या खंडन करने के लिए अपर्याप्त हैं।"
+
+        if verdict == FinalVerdict.SUPPORTED:
+            return f"Corroborated by independent primary reporting. All {sup} core factual assertions were verified against authentic sources."
+        elif verdict == FinalVerdict.REFUTED:
+            return f"Directly contradicted by credible reporting. Core assertions ({ref}) conflict with verifiable official records."
+        elif verdict == FinalVerdict.MIXED:
+            return f"Contains a blend of corroborated facts ({sup}) alongside refuted ({ref}) or uncorroborated assertions ({unv})."
+        elif verdict == FinalVerdict.OUTDATED:
+            return "Assertions describe historical events accurately but omit modern dates, circulating misleadingly as breaking news."
+        else:
+            return "Available independent reporting is insufficient to confirm or disprove the submitted claims. TruthLens leaves unsupported assertions as UNVERIFIED."
+
+    def _synthesize_limitations(
+        self, claim_results: List[ClaimVerificationResult], lang: str
+    ) -> str:
+        """Summarizes known limitations and uncertainties."""
+        unv_count = sum(1 for c in claim_results if c.verdict == FinalVerdict.UNVERIFIED)
+        total_evals = sum(len(c.evaluations) for c in claim_results)
+        synd_count = sum(sum(1 for e in c.evaluations if e.is_syndicated) for c in claim_results)
+
+        parts = []
+        if unv_count > 0:
+            parts.append(f"{unv_count} assertion(s) could not be definitively verified due to lack of independent reporting.")
+        if synd_count > 0:
+            parts.append(f"{synd_count} syndicated wire republishing instances were clustered to prevent false corroboration inflation.")
+        if not parts:
+            parts.append("Verification is based on currently indexed open web sources and reputable press archives.")
+
+        return " ".join(parts)
+
     def _synthesize_summary(
         self,
         original_content: str,
@@ -94,11 +156,11 @@ class ReportGenerator:
         claim_results: List[ClaimVerificationResult],
         lang: str = "en"
     ) -> str:
-        """Synthesize human-readable summary with Ollama or fallback template."""
+        """Synthesize human-readable summary with Ollama or deterministic fallback template."""
         if self.ollama.is_healthy():
             try:
                 system_prompt = (
-                    "You are the senior editorial verifier for TruthLens 2.0. "
+                    "You are the senior editorial verifier for TruthLens. "
                     "Write a concise, objective 2-paragraph executive verification summary. "
                     "Never invent quotes or URLs. Reference the verified evidence findings directly."
                 )
@@ -113,7 +175,11 @@ class ReportGenerator:
                     f"Investigated Claim Findings:\n{findings_summary}\n\n"
                     f"Provide a clear, balanced factual summary explaining why this verdict was reached."
                 )
-                resp = self.ollama.generate(prompt=prompt, system=system_prompt)
+                resp = self.ollama.generate(
+                    prompt=prompt,
+                    system=system_prompt,
+                    options={"num_predict": 256, "num_ctx": 1024}
+                )
                 generated_text = resp.get("response", "").strip()
                 if generated_text and len(generated_text) > 30:
                     return generated_text
@@ -188,4 +254,3 @@ class ReportGenerator:
 
 # Global singleton
 report_generator = ReportGenerator()
-

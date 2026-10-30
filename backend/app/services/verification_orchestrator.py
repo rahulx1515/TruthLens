@@ -1,9 +1,8 @@
 """
-TruthLens 2.0 - Verification Pipeline Orchestrator
+TruthLens - Verification Pipeline Orchestrator
 Drives the asynchronous state machine for evidence-based news verification:
 QUEUED -> EXTRACTING -> SEARCHING -> RETRIEVING -> VERIFYING -> GENERATING_REPORT -> COMPLETED.
 Persists every state transition, isolates failures, and allows clean deduplicated retries.
-Note: FastAPI BackgroundTasks serves as the initial single-process worker.
 """
 from datetime import datetime, timezone
 import json
@@ -46,6 +45,10 @@ class VerificationOrchestrator:
                 logger.error(f"Job {job_id} not found in database.")
                 return
 
+            if job.status == "CANCELLED":
+                logger.info(f"Job {job_id} was cancelled before processing.")
+                return
+
             # Stage 1: EXTRACTING CLAIMS (20%)
             self._update_job_state(
                 db, job, status="EXTRACTING", step="Extracting atomic checkable claims", progress=20
@@ -64,16 +67,22 @@ class VerificationOrchestrator:
                 text=job.original_text, headline=job.headline
             )
 
+            # Check if cancelled mid-flight
+            job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
+            if job.status == "CANCELLED":
+                return
+
             if not extraction_resp.claims:
                 logger.warning(f"No verifiable claims found in text for job {job_id}")
-                # Generate empty report with unverified verdict
                 empty_report = report_generator.generate_report(
                     original_content=job.original_text,
                     original_title=job.headline,
                     detected_language=job.language,
                     is_code_mixed=job.is_code_mixed,
                     claim_results=[],
-                    search_providers_used=[]
+                    search_providers_used=[],
+                    extraction_method=extraction_resp.extraction_method,
+                    nli_inference_method="heuristic_fallback"
                 )
                 job.status = "COMPLETED"
                 job.current_step = "Verification complete (no checkable claims found)"
@@ -81,6 +90,7 @@ class VerificationOrchestrator:
                 job.overall_verdict = empty_report.overall_verdict.value
                 job.overall_confidence = empty_report.overall_confidence
                 job.report_json = json.dumps(empty_report.model_dump(), ensure_ascii=False)
+                job.updated_at = datetime.now(timezone.utc)
                 db.commit()
                 return
 
@@ -93,6 +103,10 @@ class VerificationOrchestrator:
             providers_used = set()
 
             for claim in extraction_resp.claims:
+                job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
+                if job.status == "CANCELLED":
+                    return
+
                 # Search using neutral query
                 neutral_resp = search_service.search(
                     claim.neutral_search_query, lang=job.language, max_results=6
@@ -124,6 +138,10 @@ class VerificationOrchestrator:
 
             passages_by_claim = {}
             for claim in extraction_resp.claims:
+                job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
+                if job.status == "CANCELLED":
+                    return
+
                 leads = search_leads_by_claim.get(claim.id, [])
                 evidence_resp = evidence_collector.collect_evidence_for_claim(
                     claim=claim, search_results=leads
@@ -135,9 +153,17 @@ class VerificationOrchestrator:
                 db, job, status="VERIFYING", step="Evaluating evidence entailment and contradiction with NLI", progress=80
             )
 
+            # Ensure NLI model load is attempted once and kept in memory
+            nli_verifier.load_model()
+            nli_inference_method = "neural" if nli_verifier.is_neural_available else "heuristic_fallback"
+
             claim_results: List[ClaimVerificationResult] = []
 
             for claim in extraction_resp.claims:
+                job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
+                if job.status == "CANCELLED":
+                    return
+
                 passages = passages_by_claim.get(claim.id, [])
                 evaluations = []
 
@@ -182,7 +208,9 @@ class VerificationOrchestrator:
                 detected_language=job.language,
                 is_code_mixed=job.is_code_mixed,
                 claim_results=claim_results,
-                search_providers_used=list(providers_used)
+                search_providers_used=list(providers_used),
+                extraction_method=extraction_resp.extraction_method,
+                nli_inference_method=nli_inference_method
             )
 
             # Stage 6: COMPLETED (100%)
@@ -201,7 +229,7 @@ class VerificationOrchestrator:
             logger.exception(f"Verification pipeline failed for job {job_id}: {err}")
             try:
                 job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
-                if job:
+                if job and job.status != "CANCELLED":
                     job.status = "FAILED"
                     job.current_step = "Pipeline encountered an error"
                     job.error_message = str(err)
@@ -209,6 +237,27 @@ class VerificationOrchestrator:
                     db.commit()
             except Exception as commit_err:
                 logger.error(f"Failed to record failure status: {commit_err}")
+        finally:
+            if should_close:
+                db.close()
+
+    def cancel_job(self, job_id: str, db: Optional[Session] = None) -> Optional[VerificationJob]:
+        """Cancels an active or queued verification job."""
+        should_close = False
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        try:
+            job = db.query(VerificationJob).filter(VerificationJob.id == job_id).first()
+            if not job:
+                return None
+            if job.status not in ("COMPLETED", "FAILED"):
+                job.status = "CANCELLED"
+                job.current_step = "Verification cancelled by user"
+                job.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(job)
+            return job
         finally:
             if should_close:
                 db.close()
@@ -221,33 +270,37 @@ class VerificationOrchestrator:
         if not job:
             return None
 
-        # Clean existing partial claim records to prevent duplicates
+        # Clean existing partial claim records for this job
         db.query(VerificationClaimRecord).filter(VerificationClaimRecord.job_id == job_id).delete()
-        
-        # Reset state machine
+
         job.status = "QUEUED"
         job.current_step = "Queued for retry"
         job.progress_percent = 0
         job.error_message = None
-        job.report_json = None
         job.overall_verdict = None
         job.overall_confidence = None
+        job.report_json = None
         job.updated_at = datetime.now(timezone.utc)
+
         db.commit()
         db.refresh(job)
         return job
 
     def _update_job_state(
-        self, db: Session, job: VerificationJob, status: str, step: str, progress: int
+        self,
+        db: Session,
+        job: VerificationJob,
+        status: str,
+        step: str,
+        progress: int
     ) -> None:
-        """Atomic persistence of job state machine transitions."""
+        """Atomically updates job state machine fields and timestamps."""
         job.status = status
         job.current_step = step
         job.progress_percent = progress
         job.updated_at = datetime.now(timezone.utc)
         db.commit()
-        db.refresh(job)
 
 
-# Global singleton orchestrator
+# Global singleton
 verification_orchestrator = VerificationOrchestrator()

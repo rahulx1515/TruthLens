@@ -1,7 +1,7 @@
 """
 TruthLens 2.0 - Verification Database Models
 Persists asynchronous verification jobs, intermediate state transitions,
-extracted claims, evidence evaluations, and search cache.
+extracted claims, evidence evaluations, search cache, and secure guest sessions.
 """
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
@@ -18,6 +18,7 @@ class VerificationJob(Base):
 
     id = Column(String(64), primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    guest_session_id = Column(String(64), nullable=True, index=True)
     
     # Input content
     original_text = Column(Text, nullable=False)
@@ -91,3 +92,21 @@ class SearchCache(Base):
     expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+
+class GuestSession(Base):
+    """
+    Cryptographically secure server-managed guest session.
+    Protects against session ID guessing, replay attacks, and unauthorized report claiming.
+    """
+    __tablename__ = "guest_sessions"
+
+    id = Column(String(64), primary_key=True, index=True)
+    claim_secret_hash = Column(String(128), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_claimed = Column(Boolean, default=False, nullable=False, index=True)
+    claimed_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    claimed_at = Column(DateTime, nullable=True)
+    request_count = Column(Integer, default=0, nullable=False)
+
+    user = relationship("User", foreign_keys=[claimed_by_user_id])

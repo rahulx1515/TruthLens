@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ShieldAlert,
   ShieldCheck,
   FileText,
   Activity,
   PlusCircle,
-  ArrowUpRight,
-  TrendingUp,
-  Clock,
   ExternalLink,
+  Layers,
+  HelpCircle,
+  AlertTriangle,
+  Clock,
+  RefreshCw,
+  TrendingUp,
+  BarChart2,
+  Globe,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -22,26 +27,31 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
 } from 'recharts';
-import { dashboardService } from '../services/api';
-import { DashboardStats } from '../types';
+import { verificationService } from '../services/verificationApi';
+import { VerificationDashboardStats } from '../types/verification';
 
 export const DashboardPage: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const navigate = useNavigate();
+  const [stats, setStats] = useState<VerificationDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await dashboardService.getStats();
+        setLoading(true);
+        setError(null);
+        const data = await verificationService.getVerificationStats();
         setStats(data);
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to load dashboard analytics.');
+        setError(err.response?.data?.detail || err.message || 'Failed to load verification analytics.');
       } finally {
         setLoading(false);
       }
     };
+
     fetchStats();
   }, []);
 
@@ -49,8 +59,8 @@ export const DashboardPage: React.FC = () => {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-slate-400">Loading dashboard analytics...</p>
+          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+          <p className="text-sm text-slate-400">Loading intelligence dashboard...</p>
         </div>
       </div>
     );
@@ -63,137 +73,140 @@ export const DashboardPage: React.FC = () => {
         <h3 className="text-lg font-bold text-white">Analytics Unavailable</h3>
         <p className="text-sm text-slate-400">{error || 'Unable to retrieve live statistics.'}</p>
         <Link
-          to="/analyze"
+          to="/verify"
           className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-sm text-white font-medium hover:bg-blue-500"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Perform First Analysis</span>
+          <span>Perform Verification</span>
         </Link>
       </div>
     );
   }
 
   const pieData = [
-    { name: 'Likely Fake', value: stats.fake_count, color: '#f43f5e' },
-    { name: 'Likely Authentic', value: stats.authentic_count, color: '#10b981' },
-  ];
+    { name: 'Supported', value: stats.supported_count, color: '#10b981' },
+    { name: 'Refuted', value: stats.refuted_count, color: '#f43f5e' },
+    { name: 'Mixed', value: stats.mixed_count, color: '#f59e0b' },
+    { name: 'Unverified', value: stats.unverified_count, color: '#64748b' },
+    { name: 'Outdated', value: stats.outdated_count, color: '#a855f7' },
+  ].filter((item) => item.value > 0);
+
+  const totalVerdictsCount = stats.total_verifications;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Intelligence Dashboard</h1>
-          <p className="text-sm text-slate-400">Real-time overview of credibility evaluations and trend distribution</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
+            <Activity className="w-7 h-7 text-blue-400" />
+            <span>Verification Intelligence Dashboard</span>
+          </h1>
+          <p className="text-sm text-slate-400">
+            Real-time evidence-backed verification analytics, claim distributions, and longitudinal trends
+          </p>
         </div>
         <Link
-          to="/analyze"
+          to="/verify"
           className="px-4 py-2.5 rounded-xl font-semibold text-sm text-white bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>New Analysis</span>
+          <span>Verify New Article</span>
         </Link>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Evaluated</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Total Verifications</span>
             <FileText className="w-4 h-4 text-blue-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{stats.total_analyses}</div>
+          <div className="text-3xl font-extrabold text-white">{stats.total_verifications}</div>
           <div className="text-xs text-slate-400 flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Lifetime tracked articles</span>
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            <span>Articles investigated with live evidence</span>
           </div>
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Likely Authentic</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Claims Investigated</span>
+            <Layers className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div className="text-3xl font-extrabold text-indigo-400">{stats.total_claims_investigated}</div>
+          <div className="text-xs text-slate-400">
+            Atomic factual claims verified
+          </div>
+        </div>
+
+        <div className="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-3">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Supported by Evidence</span>
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-extrabold text-emerald-400">{stats.authentic_count}</div>
+          <div className="text-3xl font-extrabold text-emerald-400">{stats.supported_count}</div>
           <div className="text-xs text-slate-400">
-            <span className="font-semibold text-emerald-400">{stats.authentic_percentage}%</span> of evaluated corpus
+            <span className="font-semibold text-emerald-400">{stats.supported_percentage}%</span> of investigated news
           </div>
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Likely Fabricated</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Contradicted / Refuted</span>
             <ShieldAlert className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-3xl font-extrabold text-rose-400">{stats.fake_count}</div>
+          <div className="text-3xl font-extrabold text-rose-400">{stats.refuted_count}</div>
           <div className="text-xs text-slate-400">
-            <span className="font-semibold text-rose-400">{stats.fake_percentage}%</span> flagged as suspicious
-          </div>
-        </div>
-
-        <div className="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-3">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Avg Confidence</span>
-            <Activity className="w-4 h-4 text-indigo-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-indigo-300">
-            {(stats.average_confidence * 100).toFixed(1)}%
-          </div>
-          <div className="text-xs text-slate-400 flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Model calibration certainty</span>
+            <span className="font-semibold text-rose-400">{stats.refuted_percentage}%</span> refuted with evidence
           </div>
         </div>
       </div>
 
-      {/* Visual Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Daily Activity Chart */}
-        <div className="lg:col-span-2 bg-surface-card border border-surface-border rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white">7-Day Verification Volume</h3>
-            <span className="text-xs font-mono text-slate-400">Real Backend Activity</span>
-          </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.daily_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2d42" vertical={false} />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    borderColor: '#1f2d42',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                />
-                <Bar dataKey="authentic_count" name="Authentic" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="fake_count" name="Fake" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      {/* Secondary Metrics Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-surface-card/60 border border-surface-border rounded-xl p-4 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Mixed / Cherry-Picked Claims:</span>
+          <span className="text-sm font-bold text-amber-400">{stats.mixed_count} ({stats.mixed_percentage}%)</span>
         </div>
+        <div className="bg-surface-card/60 border border-surface-border rounded-xl p-4 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Unverified / Insufficient Evidence:</span>
+          <span className="text-sm font-bold text-slate-400">{stats.unverified_count} ({stats.unverified_percentage}%)</span>
+        </div>
+        <div className="bg-surface-card/60 border border-surface-border rounded-xl p-4 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Avg Independent Sources / Claim:</span>
+          <span className="text-sm font-bold text-blue-400 font-mono">
+            {(stats.avg_supporting_sources + stats.avg_contradicting_sources).toFixed(1)}
+          </span>
+        </div>
+      </div>
 
-        {/* Distribution Donut */}
-        <div className="bg-surface-card border border-surface-border rounded-2xl p-6 space-y-4 flex flex-col justify-between">
-          <div>
-            <h3 className="text-base font-bold text-white">Prediction Breakdown</h3>
-            <p className="text-xs text-slate-400">Authentic vs Fabricated ratio</p>
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Verdict Distribution Pie */}
+        <div className="lg:col-span-5 bg-surface-card border border-surface-border rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-surface-border pb-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-blue-400" />
+              <span>Verdict Distribution</span>
+            </h2>
+            <span className="text-xs text-slate-400">{totalVerdictsCount} verifications</span>
           </div>
 
-          <div className="h-52 w-full relative flex items-center justify-center">
-            {stats.total_analyses === 0 ? (
-              <p className="text-xs text-slate-400">No predictions recorded yet</p>
-            ) : (
+          {totalVerdictsCount === 0 ? (
+            <div className="py-16 text-center text-xs text-slate-400">
+              No verification verdicts recorded yet. Run a verification to populate distribution charts.
+            </div>
+          ) : (
+            <div className="h-64 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
+                    innerRadius={60}
+                    outerRadius={85}
                     paddingAngle={4}
                     dataKey="value"
                   >
@@ -203,114 +216,139 @@ export const DashboardPage: React.FC = () => {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#111827',
-                      borderColor: '#1f2d42',
-                      borderRadius: '8px',
+                      backgroundColor: '#0b0f19',
+                      borderColor: '#1e293b',
+                      borderRadius: '0.75rem',
+                      color: '#fff',
                       fontSize: '12px',
                     }}
                   />
                 </PieChart>
               </ResponsiveContainer>
-            )}
+              <div className="flex flex-wrap justify-center gap-3 text-xs pt-2">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  Supported ({stats.supported_count})
+                </span>
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  Refuted ({stats.refuted_count})
+                </span>
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  Mixed ({stats.mixed_count})
+                </span>
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                  Unverified ({stats.unverified_count})
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Daily Verification Activity Bar Chart */}
+        <div className="lg:col-span-7 bg-surface-card border border-surface-border rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-surface-border pb-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span>Verification Activity (Last 7 Days)</span>
+            </h2>
+            <span className="text-xs text-slate-400">Daily verification volume</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-surface-border text-center">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-emerald-400">● Authentic</span>
-              <p className="text-sm font-bold text-white">{stats.authentic_count}</p>
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-rose-400">● Fabricated</span>
-              <p className="text-sm font-bold text-white">{stats.fake_count}</p>
-            </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.daily_trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="date" stroke="#64748b" fontSize={11} />
+                <YAxis stroke="#64748b" fontSize={11} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#0b0f19',
+                    borderColor: '#1e293b',
+                    borderRadius: '0.75rem',
+                    color: '#fff',
+                    fontSize: '12px',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                <Bar dataKey="supported" name="Supported" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="refuted" name="Refuted" fill="#f43f5e" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="mixed" name="Mixed" fill="#f59e0b" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="unverified" name="Unverified" fill="#64748b" stackId="a" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Recent Analyses Table */}
+      {/* Recent Verifications List */}
       <div className="bg-surface-card border border-surface-border rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-white">Recent Analyses</h3>
-            <p className="text-xs text-slate-400">Most recently scanned news articles</p>
-          </div>
+        <div className="flex items-center justify-between border-b border-surface-border pb-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+            <Clock className="w-4 h-4 text-blue-400" />
+            <span>Recent Verification Reports</span>
+          </h2>
           <Link
             to="/history"
-            className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+            className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
           >
-            <span>View All</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
+            View all history →
           </Link>
         </div>
 
-        {stats.recent_analyses.length === 0 ? (
-          <div className="text-center py-10 space-y-3">
-            <p className="text-sm text-slate-400">No news analyses recorded yet.</p>
-            <Link
-              to="/analyze"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-xs font-semibold text-white hover:bg-blue-500"
-            >
-              Analyze Your First Article
-            </Link>
+        {stats.recent_verifications.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400">
+            No verification reports available yet. Submit an article or claim on the Verify page.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-surface-border">
-                <tr>
-                  <th className="py-3 px-4">Headline / Source</th>
-                  <th className="py-3 px-4">Prediction</th>
-                  <th className="py-3 px-4">Confidence</th>
-                  <th className="py-3 px-4">Model</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-border/50 text-slate-300">
-                {stats.recent_analyses.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3.5 px-4 font-medium text-white max-w-xs truncate">
-                      {item.title || 'Untitled Article'}
-                      {item.url && (
-                        <span className="block text-[11px] text-slate-400 truncate flex items-center gap-1">
-                          <ExternalLink className="w-2.5 h-2.5 inline" /> {item.url}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
-                          item.prediction === 'REAL'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        }`}
-                      >
-                        {item.label}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-medium">
-                      {(item.confidence * 100).toFixed(1)}%
-                    </td>
-                    <td className="py-3.5 px-4 text-xs text-slate-400">{item.model_name}</td>
-                    <td className="py-3.5 px-4 text-xs text-slate-400">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <Link
-                        to={`/analyze?resultId=${item.id}`}
-                        className="text-xs text-blue-400 hover:text-blue-300 font-medium"
-                      >
-                        View Report →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-surface-border">
+            {stats.recent_verifications.slice(0, 5).map((item) => (
+              <div
+                key={item.job_id}
+                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/40 px-2 rounded-lg transition-colors"
+              >
+                <div className="space-y-1 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase font-mono px-2 py-0.5 rounded ${
+                        item.overall_verdict === 'SUPPORTED'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : item.overall_verdict === 'REFUTED'
+                          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          : item.overall_verdict === 'MIXED'
+                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          : 'bg-slate-800 text-slate-400 border border-surface-border'
+                      }`}
+                    >
+                      {item.overall_verdict}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {Math.round(item.overall_confidence * 100)}% Conf
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      • {new Date(item.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <h3 className="text-xs sm:text-sm font-semibold text-slate-200 truncate max-w-xl">
+                    {item.headline || 'Untitled Verification'}
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => navigate(`/verify/${item.job_id}`)}
+                  className="text-xs text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1 self-end sm:self-center shrink-0 hover:underline"
+                >
+                  <span>Open Report</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
     </div>
   );
 };
-

@@ -39,4 +39,6 @@ class ClaimExtractionResponse(BaseModel):
     total_claims: int = Field(default=0, description="Total count of verifiable claims extracted")
     discarded_opinions_count: int = Field(default=0, description="Count of subjective statements filtered out")
     processing_time_ms: float = Field(default=0.0, description="Extraction duration in milliseconds")
+    extraction_method: str = Field(default="llm", description="Method used: 'llm' or 'rule_based_fallback'")
+    fallback_reason: Optional[str] = Field(default=None, description="Reason if rule-based fallback was used")
 

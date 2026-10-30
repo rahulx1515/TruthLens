@@ -1,10 +1,13 @@
 """
-TruthLens 2.0 - Evidence Chunking & Syndication Tests
-Tests URL canonicalization, passage chunking, BM25 scoring, and wire-service syndication detection.
+TruthLens - Evidence Services & Integrity Tests
+Tests URL canonicalization, passage chunking, BM25 scoring, syndication clustering,
+and evidence integrity (rejecting unrelated passages, keyword-only false positives,
+and verifying verbatim quotations).
 """
 import pytest
 from app.schemas.claim import ExtractedClaim, ClaimType
 from app.schemas.evidence import EvidencePassage
+from app.services.evidence_collector import EvidenceCollector, classify_source_type, evidence_collector
 from app.services.evidence_deduplicator import EvidenceDeduplicator, evidence_deduplicator
 from app.services.passage_chunker import PassageChunker, passage_chunker
 from rank_bm25 import BM25Plus
@@ -68,14 +71,12 @@ def test_syndication_detection_wire_service():
     """
     dedup = EvidenceDeduplicator(jaccard_threshold=0.60)
 
-    # Identical PTI wire story published by two different outlets
     wire_text = (
         "NEW DELHI (PTI) - The government on Monday notified the new electric vehicle subsidy policy. "
         "The scheme will offer direct subsidies of up to 50,000 rupees for two-wheelers and provides "
         "comprehensive incentives for charging infrastructure across major national highways."
     )
     
-    # Completely distinct editorial analysis from another outlet
     distinct_text = (
         "Automotive market analysts report mixed consumer sentiment regarding public battery swapping networks. "
         "High initial costs and slow urban grid modernization present challenges for rural adoption."
@@ -108,7 +109,6 @@ def test_syndication_detection_wire_service():
     assert indep_count == 2  # Only 2 independent stories, NOT 3
     assert synd_count == 1   # Exactly 1 syndicated copy detected
 
-    # p2 should be marked as syndicated copy of p1
     assert p1.is_syndicated_copy is False
     assert p2.is_syndicated_copy is True
     assert p2.primary_source_url == p1.article_url
@@ -128,3 +128,85 @@ def test_bm25_lexical_scoring():
     scores = bm25.get_scores(query)
 
     assert scores[0] > scores[1]
+
+
+# ==============================================================================
+# EVIDENCE INTEGRITY REGRESSION TESTS (Section 7 & 15.H)
+# ==============================================================================
+
+def test_unrelated_passage_rejected_for_actor_debut_claim():
+    """
+    CRITICAL REGRESSION TEST (Section 7):
+    Claim: Varun Dhawan, Siddharth Malhotra and Alia Bhatt made their film debuts with Student of the Year.
+    An article discussing US student visa fraud or Venezuela must NEVER be accepted as evidence,
+    even if the keyword 'student' appears.
+    """
+    collector = EvidenceCollector()
+    claim = ExtractedClaim(
+        id="c_debut",
+        claim_text="Varun Dhawan, Siddharth Malhotra and Alia Bhatt made their film debuts with Student of the Year.",
+        claim_type=ClaimType.FACTUAL,
+        entities=["Varun Dhawan", "Siddharth Malhotra", "Alia Bhatt", "Student of the Year"],
+        neutral_search_query="Varun Dhawan Alia Bhatt Student of the Year debut",
+        counter_search_query="Varun Dhawan Alia Bhatt debut false debunk",
+        language="en"
+    )
+
+    # Completely unrelated passage about US student fraud (mentions 'student' but none of the actors)
+    irrelevant_passage = (
+        "WASHINGTON - Federal prosecutors charged sixteen defendants in connection with a large-scale "
+        "student visa fraud ring involving sham universities across three states. International students "
+        "were enrolled solely to obtain work authorization visas without attending academic classes."
+    )
+
+    is_rel, rel_score, reason = collector.is_passage_relevant_to_claim(
+        claim=claim,
+        passage_text=irrelevant_passage,
+        bm25_score=3.5,  # even with positive BM25 from 'student'
+        lang="en"
+    )
+
+    assert is_rel is False
+    assert "core named entities" in reason
+
+
+def test_relevant_passage_accepted_for_actor_debut_claim():
+    """
+    Verify that genuine passage mentioning the core entities is accepted as relevant evidence.
+    """
+    collector = EvidenceCollector()
+    claim = ExtractedClaim(
+        id="c_debut",
+        claim_text="Varun Dhawan, Siddharth Malhotra and Alia Bhatt made their film debuts with Student of the Year.",
+        claim_type=ClaimType.FACTUAL,
+        entities=["Varun Dhawan", "Siddharth Malhotra", "Alia Bhatt", "Student of the Year"],
+        neutral_search_query="Varun Dhawan Alia Bhatt Student of the Year debut",
+        counter_search_query="Varun Dhawan Alia Bhatt debut false debunk",
+        language="en"
+    )
+
+    relevant_passage = (
+        "MUMBAI - Karan Johar's 2012 romantic comedy drama Student of the Year marked the high-profile Bollywood "
+        "acting debuts of newcomers Alia Bhatt, Varun Dhawan, and Sidharth Malhotra. The film became a major box-office hit."
+    )
+
+    is_rel, rel_score, reason = collector.is_passage_relevant_to_claim(
+        claim=claim,
+        passage_text=relevant_passage,
+        bm25_score=6.2,
+        lang="en"
+    )
+
+    assert is_rel is True
+    assert rel_score >= 0.50
+
+
+def test_source_type_classification():
+    """Verify classification of primary (gov), secondary (news), and other sources."""
+    assert classify_source_type("isro.gov.in") == "primary"
+    assert classify_source_type("whitehouse.gov") == "primary"
+    assert classify_source_type("supremecourt.gov.in") == "primary"
+    assert classify_source_type("reuters.com") == "secondary"
+    assert classify_source_type("bbc.com") == "secondary"
+    assert classify_source_type("thehindu.com") == "secondary"
+    assert classify_source_type("randomblog12345.xyz") == "other"

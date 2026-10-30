@@ -8,6 +8,14 @@ import {
   User,
 } from '../types';
 
+export const getGuestSessionId = (): string | null => {
+  return localStorage.getItem('truthlens_guest_session_id');
+};
+
+export const getGuestClaimToken = (): string | null => {
+  return localStorage.getItem('truthlens_guest_claim_token');
+};
+
 const api = axios.create({
   baseURL: '/api/v1',
   headers: {
@@ -15,21 +23,36 @@ const api = axios.create({
   },
 });
 
-// Attach Authorization token if stored
+// Attach Authorization token if stored, otherwise attach server-issued guest session ID if present
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('truthlens_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    const guestId = getGuestSessionId();
+    if (guestId) {
+      config.headers['X-Guest-Session-ID'] = guestId;
+    }
   }
   return config;
 });
 
-// Response interceptor for session expiration
+// Response interceptor: automatically persist server-issued cryptographic guest tokens
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const serverGuestId = response.headers['x-guest-session-id'];
+    const serverClaimToken = response.headers['x-guest-claim-token'];
+
+    if (serverGuestId) {
+      localStorage.setItem('truthlens_guest_session_id', serverGuestId);
+    }
+    if (serverClaimToken) {
+      localStorage.setItem('truthlens_guest_claim_token', serverClaimToken);
+    }
+    return response;
+  },
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear token if expired
       const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
       if (!isAuthEndpoint) {
         localStorage.removeItem('truthlens_token');
@@ -40,6 +63,24 @@ api.interceptors.response.use(
   }
 );
 
+export const claimGuestSessionReports = async () => {
+  const guestId = getGuestSessionId();
+  const claimToken = getGuestClaimToken();
+
+  if (guestId && claimToken) {
+    try {
+      await api.post('/verify/claim-guest-reports', {
+        guest_session_id: guestId,
+        claim_token: claimToken,
+      });
+      localStorage.removeItem('truthlens_guest_session_id');
+      localStorage.removeItem('truthlens_guest_claim_token');
+    } catch {
+      // Ignore claiming failure if guest session was empty or already transferred
+    }
+  }
+};
+
 export const authService = {
   async register(data: { email: string; password: string; full_name?: string }): Promise<User> {
     const res = await api.post<User>('/auth/register', data);
@@ -49,6 +90,7 @@ export const authService = {
     const res = await api.post<AuthResponse>('/auth/login', data);
     if (res.data.access_token) {
       localStorage.setItem('truthlens_token', res.data.access_token);
+      await claimGuestSessionReports();
     }
     return res.data;
   },
@@ -106,4 +148,3 @@ export const modelsService = {
 };
 
 export default api;
-

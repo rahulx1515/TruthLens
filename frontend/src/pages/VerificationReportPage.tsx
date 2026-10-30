@@ -13,8 +13,14 @@ import {
   Quote,
   CheckCircle2,
   XCircle,
-  Copy,
   Layers,
+  Info,
+  Cpu,
+  Share2,
+  Check,
+  UserPlus,
+  LogIn,
+  FileCheck,
 } from 'lucide-react';
 import { verificationService } from '../services/verificationApi';
 import {
@@ -22,15 +28,18 @@ import {
   NLIPassageEvaluation,
   VerificationReport,
 } from '../types/verification';
+import { useAuth } from '../hooks/useAuth';
 
 export const VerificationReportPage: React.FC = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const [report, setReport] = useState<VerificationReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState<'all' | 'entailment' | 'contradiction'>('all');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     if (!jobId) return;
@@ -53,12 +62,20 @@ export const VerificationReportPage: React.FC = () => {
     fetchReport();
   }, [jobId]);
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   if (isLoading) {
     return (
-      <div className="py-24 text-center space-y-4 animate-fade-in">
+      <div className="py-24 text-center space-y-4 animate-fade-in max-w-lg mx-auto">
         <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
-        <h2 className="text-lg font-semibold text-slate-200">Assembling Verification Report...</h2>
-        <p className="text-sm text-slate-400">Compiling claim assessments, NLI evaluations, and cited evidence.</p>
+        <h2 className="text-lg font-semibold text-slate-200">Retrieving Verification Audit Trail...</h2>
+        <p className="text-sm text-slate-400">
+          Compiling claim assessments, publisher citations, and verified evidence passages.
+        </p>
       </div>
     );
   }
@@ -93,7 +110,7 @@ export const VerificationReportPage: React.FC = () => {
           text: 'text-emerald-400',
           badgeBg: 'bg-emerald-500/20',
           icon: ShieldCheck,
-          label: 'Supported by Evidence',
+          label: 'Supported by Live Evidence',
         };
       case 'REFUTED':
         return {
@@ -102,7 +119,7 @@ export const VerificationReportPage: React.FC = () => {
           text: 'text-rose-400',
           badgeBg: 'bg-rose-500/20',
           icon: ShieldAlert,
-          label: 'Refuted / Contradicted',
+          label: 'Refuted by Live Evidence',
         };
       case 'MIXED':
         return {
@@ -111,7 +128,7 @@ export const VerificationReportPage: React.FC = () => {
           text: 'text-amber-400',
           badgeBg: 'bg-amber-500/20',
           icon: AlertTriangle,
-          label: 'Mixed / Cherry-Picked',
+          label: 'Mixed / Partially Contradicted',
         };
       case 'OUTDATED':
         return {
@@ -120,7 +137,7 @@ export const VerificationReportPage: React.FC = () => {
           text: 'text-purple-400',
           badgeBg: 'bg-purple-500/20',
           icon: Clock,
-          label: 'Outdated / Miscontextualized',
+          label: 'Outdated / Superseded News',
         };
       case 'UNVERIFIED':
       default:
@@ -153,20 +170,61 @@ export const VerificationReportPage: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
-      {/* Navigation & Report Header */}
+      {/* Guest Session CTA Banner */}
+      {!isAuthenticated && (
+        <div className="bg-gradient-to-r from-blue-900/30 via-slate-900 to-indigo-950/30 border border-blue-500/30 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Your verification is complete</span>
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300">
+              Create a free account to save this report and access your verification history later.
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Link
+              to="/login"
+              className="text-xs font-semibold text-slate-300 hover:text-white px-3.5 py-2 rounded-xl border border-surface-border hover:bg-slate-800 transition-colors inline-flex items-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </Link>
+            <Link
+              to="/register"
+              className="text-xs font-semibold text-white px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/30 transition-all inline-flex items-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Create Account</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-border pb-5">
         <Link
           to="/verify"
           className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>New Investigation</span>
+          <span>New Verification</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="text-xs font-medium px-3 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-surface-border flex items-center gap-1.5 transition-colors"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+            <span>{copiedLink ? 'Link Copied' : 'Share Report'}</span>
+          </button>
           <span className="text-[11px] font-mono px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 border border-surface-border">
-            ID: {report.verification_id}
+            ID: {report.verification_id.substring(0, 16)}...
           </span>
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+          <span className="text-[11px] font-medium px-2 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
             <Globe className="w-3 h-3" />
             {report.detected_language === 'hi' ? 'हिन्दी (Hindi)' : 'English (en)'}
             {report.is_code_mixed && ' • Hinglish'}
@@ -217,10 +275,34 @@ export const VerificationReportPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Providers and Stats Bar */}
+        {/* Why This Verdict Section */}
+        {report.why_this_verdict && (
+          <div className="mt-5 p-4 rounded-xl bg-slate-900/70 border border-surface-border space-y-1.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+              <Info className="w-4 h-4" />
+              <span>Why This Verdict?</span>
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              {report.why_this_verdict}
+            </p>
+          </div>
+        )}
+
+        {/* Limitations & Uncertainty */}
+        {report.limitations_and_uncertainty && (
+          <div className="mt-3 p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-300/90 leading-relaxed flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-amber-300">Limitations & Scope: </span>
+              {report.limitations_and_uncertainty}
+            </div>
+          </div>
+        )}
+
+        {/* Pipeline Diagnostics & Providers Bar */}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-4 border-t border-slate-700/30">
-          <div className="flex items-center gap-2">
-            <span>Discovery Providers:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span>Discovery Sources:</span>
             {report.search_providers_used.map((p) => (
               <span
                 key={p}
@@ -230,8 +312,23 @@ export const VerificationReportPage: React.FC = () => {
               </span>
             ))}
           </div>
-          <div>
-            Verified at {new Date(report.created_at).toLocaleDateString()} {new Date(report.created_at).toLocaleTimeString()}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {report.extraction_method && (
+              <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono text-[10px] flex items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                Extraction: {report.extraction_method === 'llm' ? 'Ollama LLM' : 'Rule-based'}
+              </span>
+            )}
+            {report.nli_inference_method && (
+              <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono text-[10px] flex items-center gap-1">
+                <FileCheck className="w-3 h-3" />
+                NLI: {report.nli_inference_method === 'neural' ? 'Neural Transformer' : 'Heuristic'}
+              </span>
+            )}
+            <span>
+              {new Date(report.created_at).toLocaleDateString()} {new Date(report.created_at).toLocaleTimeString()}
+            </span>
           </div>
         </div>
       </div>
@@ -243,7 +340,7 @@ export const VerificationReportPage: React.FC = () => {
             <Layers className="w-5 h-5 text-blue-400" />
             <span>Investigated Atomic Claims ({report.claims_total})</span>
           </h2>
-          <div className="flex gap-2 text-xs">
+          <div className="flex flex-wrap gap-2 text-xs">
             {report.claims_supported > 0 && (
               <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 {report.claims_supported} Supported
@@ -257,6 +354,11 @@ export const VerificationReportPage: React.FC = () => {
             {report.claims_unverified > 0 && (
               <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-surface-border">
                 {report.claims_unverified} Unverified
+              </span>
+            )}
+            {report.claims_outdated > 0 && (
+              <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                {report.claims_outdated} Outdated
               </span>
             )}
           </div>
@@ -278,6 +380,9 @@ export const VerificationReportPage: React.FC = () => {
                     <span className="text-[11px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
                       {cr.claim_type}
                     </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {cr.language.toUpperCase()}
+                    </span>
                   </div>
                   <span
                     className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${claimTheme.bg} ${claimTheme.text} border ${claimTheme.border}`}
@@ -290,13 +395,29 @@ export const VerificationReportPage: React.FC = () => {
                   "{cr.claim_text}"
                 </p>
 
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  {cr.explanation}
-                </p>
+                {cr.why_verdict ? (
+                  <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-surface-border/50">
+                    <strong className="text-blue-400 font-medium">Verdict Rationale: </strong>
+                    {cr.why_verdict}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {cr.explanation}
+                  </p>
+                )}
 
-                <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
-                  <span>Independent Supporting Sources: <strong className="text-emerald-400">{cr.supporting_evidence_count}</strong></span>
-                  <span>Independent Contradicting Sources: <strong className="text-rose-400">{cr.contradicting_evidence_count}</strong></span>
+                <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-400 pt-1">
+                  <span>
+                    Supporting Sources: <strong className="text-emerald-400">{cr.supporting_evidence_count}</strong>
+                  </span>
+                  <span>
+                    Contradicting Sources: <strong className="text-rose-400">{cr.contradicting_evidence_count}</strong>
+                  </span>
+                  {cr.corroboration_score !== undefined && (
+                    <span>
+                      Corroboration: <strong className="text-blue-400 font-mono">{Math.round(cr.corroboration_score * 100)}%</strong>
+                    </span>
+                  )}
                 </div>
               </div>
             );
@@ -381,8 +502,19 @@ export const VerificationReportPage: React.FC = () => {
                       </a>
                     </div>
 
-                    {/* NLI Badge */}
-                    <div className="flex items-center gap-2">
+                    {/* NLI Badge & Source Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {ev.source_type && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-surface-border">
+                          {ev.source_type.replace('_', ' ')}
+                        </span>
+                      )}
+                      {ev.exact_quotation_verified && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          Verbatim Verified
+                        </span>
+                      )}
                       {ev.is_syndicated && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
                           Syndicated Wire Copy
@@ -409,12 +541,22 @@ export const VerificationReportPage: React.FC = () => {
                     "{ev.quoted_passage}"
                   </blockquote>
 
+                  {/* Relation Explanation */}
+                  {ev.relation_explanation && (
+                    <p className="text-xs text-slate-400 italic">
+                      {ev.relation_explanation}
+                    </p>
+                  )}
+
                   {/* Metadata and Context */}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pt-1">
                     <span className="truncate max-w-md">
                       Pertains to claim: <span className="text-slate-300 font-medium">"{claimText}"</span>
                     </span>
                     <div className="flex items-center gap-3 text-[11px]">
+                      {ev.relevance_score !== undefined && (
+                        <span>Relevance: <strong className="text-blue-300 font-mono">{Math.round(ev.relevance_score * 100)}%</strong></span>
+                      )}
                       {ev.published_date && (
                         <span>Published: <strong className="text-slate-300">{ev.published_date}</strong></span>
                       )}
@@ -430,4 +572,3 @@ export const VerificationReportPage: React.FC = () => {
     </div>
   );
 };
-

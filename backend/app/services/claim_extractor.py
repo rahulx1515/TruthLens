@@ -1,8 +1,9 @@
 """
-TruthLens 2.0 - Claim Extraction Engine
+TruthLens - Claim Extraction Engine
 Decomposes submitted articles, headlines, or claims into atomic verifiable assertions.
 Extracts entities, metrics, and formulates dual search queries (neutral & counter-hypothesis).
-Supports English and Hindi natively with an Ollama LLM pipeline and rule-based fallback.
+Supports English and Hindi natively with an Ollama LLM pipeline and robust rule-based fallback.
+Optimized for fast CPU inference without prompt bloat or timeouts.
 """
 import hashlib
 import logging
@@ -23,6 +24,7 @@ logger = logging.getLogger("truthlens.claim_extractor")
 class ClaimExtractor:
     """
     Extracts atomic, verifiable claims from multilingual news content.
+    Tracks whether LLM extraction succeeded or rule-based fallback was used.
     """
 
     def __init__(self, client: Optional[OllamaClient] = None):
@@ -31,7 +33,8 @@ class ClaimExtractor:
     def extract_claims(self, text: str, headline: Optional[str] = None) -> ClaimExtractionResponse:
         """
         Main entry point for claim extraction.
-        Combines headline and text, detects language, and extracts atomic claims.
+        Combines headline and text, detects language, limits prompt length intelligently,
+        and extracts atomic claims via LLM or rule-based fallback.
         """
         start_time = time.time()
         combined_text = f"{headline.strip() + '. ' if headline else ''}{text.strip()}".strip()
@@ -44,7 +47,9 @@ class ClaimExtractor:
                 claims=[],
                 total_claims=0,
                 discarded_opinions_count=0,
-                processing_time_ms=0.0
+                processing_time_ms=0.0,
+                extraction_method="rule_based",
+                fallback_reason="Empty input provided"
             )
 
         # Step 1: Language and Script Detection
@@ -55,22 +60,35 @@ class ClaimExtractor:
         # Step 2: Extract claims via Ollama (or fallback)
         claims = []
         discarded_opinions = 0
+        extraction_method = "llm"
+        fallback_reason = None
 
-        # Try LLM-based extraction first
+        # Intelligent input limiting for CPU inference:
+        # Keep input text concise (~1400 chars) to prevent Ollama CPU timeouts
+        concise_text = self._compress_text_for_llm(normalized_text, normalizer, max_chars=1400)
+
+        # Try LLM-based extraction first if service is responsive
         if self.ollama.is_healthy():
             try:
                 claims, discarded_opinions = self._extract_with_llm(
-                    normalized_text, lang=lang, is_code_mixed=is_code_mixed
+                    concise_text, lang=lang, is_code_mixed=is_code_mixed
                 )
+                extraction_method = "llm"
             except Exception as e:
                 logger.warning(f"Ollama claim extraction failed ({e}), using rule-based fallback")
                 claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
+                extraction_method = "rule_based_fallback"
+                fallback_reason = f"Ollama generation failed or timed out ({type(e).__name__})"
         else:
             claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
+            extraction_method = "rule_based_fallback"
+            fallback_reason = "Local Ollama service offline or unreachable"
 
         # If LLM returned empty list on non-empty input, run rule-based fallback
         if not claims and len(normalized_text.split()) >= 3:
             claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
+            extraction_method = "rule_based_fallback"
+            fallback_reason = "LLM returned no valid assertions; rule-based extraction applied"
 
         elapsed_ms = round((time.time() - start_time) * 1000, 2)
 
@@ -81,27 +99,50 @@ class ClaimExtractor:
             claims=claims,
             total_claims=len(claims),
             discarded_opinions_count=discarded_opinions,
-            processing_time_ms=elapsed_ms
+            processing_time_ms=elapsed_ms,
+            extraction_method=extraction_method,
+            fallback_reason=fallback_reason
         )
+
+    def _compress_text_for_llm(self, text: str, normalizer, max_chars: int = 1400) -> str:
+        """
+        Intelligently retains the most informative sentences up to max_chars
+        to avoid choking local CPU LLM inference.
+        """
+        if len(text) <= max_chars:
+            return text
+
+        sentences = normalizer.split_sentences(text)
+        selected = []
+        current_len = 0
+
+        # Always take first 2-3 sentences as they contain the core lede
+        for s in sentences:
+            s_clean = s.strip()
+            if not s_clean:
+                continue
+            if current_len + len(s_clean) > max_chars and selected:
+                break
+            selected.append(s_clean)
+            current_len += len(s_clean) + 1
+
+        return " ".join(selected)
 
     def _extract_with_llm(
         self, text: str, lang: str, is_code_mixed: bool
     ) -> Tuple[List[ExtractedClaim], int]:
-        """Extract claims using local Ollama model with structured JSON enforcement."""
+        """Extract claims using local Ollama model with structured JSON enforcement and CPU bounds."""
         if lang == "hi":
             system_prompt = (
-                "You are an expert multilingual factual news verification engine for TruthLens. "
-                "Analyze the Hindi or Hinglish text and extract atomic, checkable factual claims. "
-                "Strict requirements:\n"
-                "1. Maintain authentic Devanagari Unicode script without transliteration or character loss.\n"
-                "2. Separate checkable factual claims from subjective opinions or rhetoric.\n"
-                "3. For each claim, formulate a neutral search query and a counter-hypothesis query (including 'तथ्य जांच' or 'फर्जी दावा').\n"
-                "4. Output strict JSON only matching the schema."
+                "You are an expert news verification engine for TruthLens. "
+                "Extract 1 to 4 atomic, checkable factual claims from the Hindi text. "
+                "Preserve authentic Devanagari Unicode. Separate facts from opinions. "
+                "Output strict JSON only."
             )
             prompt = f"""Extract checkable claims from this Hindi news text:
 \"\"\"{text}\"\"\"
 
-Output valid JSON matching:
+Output strict JSON matching:
 {{
   "claims": [
     {{
@@ -117,19 +158,15 @@ Output valid JSON matching:
 }}"""
         else:
             system_prompt = (
-                "You are an expert factual news verification engine for TruthLens. "
-                "Analyze the English news text and extract atomic, checkable factual claims. "
-                "Strict requirements:\n"
-                "1. Deconstruct complex paragraphs into individual, falsifiable statements.\n"
-                "2. Classify each claim: 'factual', 'numerical', 'quote', 'opinion', or 'prediction'.\n"
-                "3. Exclude pure subjective opinions.\n"
-                "4. Formulate a neutral search query (to find evidence) and a counter-hypothesis query (to find debunks/fact-checks).\n"
-                "5. Output strict JSON only matching the schema."
+                "You are an expert news verification engine for TruthLens. "
+                "Extract 1 to 4 atomic, checkable factual claims from the English news text. "
+                "Separate verifiable statements from subjective opinions. "
+                "Output strict JSON only."
             )
             prompt = f"""Extract checkable claims from this English news text:
 \"\"\"{text}\"\"\"
 
-Output valid JSON matching:
+Output strict JSON matching:
 {{
   "claims": [
     {{
@@ -169,6 +206,8 @@ Output valid JSON matching:
             counter_q = item.get("counter_search_query", "").strip()
             if not counter_q:
                 counter_q = f"{claim_text} fact check debunk false"
+            elif "fact check" not in counter_q.lower() and "debunk" not in counter_q.lower() and "तथ्य" not in counter_q and "फर्जी" not in counter_q:
+                counter_q = f"{counter_q} fact check debunk"
 
             valid_claims.append(
                 ExtractedClaim(
@@ -198,82 +237,87 @@ Output valid JSON matching:
         opinion_cues_hi = {"मुझे लगता है", "मेरी राय में", "शायद", "हो सकता है"}
 
         claims = []
-        discarded_count = 0
+        discarded_opinions = 0
 
-        for sentence in sentences:
-            s_clean = sentence.strip()
-            # Discard short phrases or rhetorical questions
-            if len(s_clean.split()) < 4 or s_clean.endswith("?"):
+        for s in sentences:
+            s_clean = s.strip()
+            if not s_clean or len(s_clean) < 15:
                 continue
 
-            # Opinion filter
+            # Check opinion markers
             s_lower = s_clean.lower()
-            if lang == "hi" and any(cue in s_clean for cue in opinion_cues_hi):
-                discarded_count += 1
-                continue
-            elif lang == "en" and any(cue in s_lower for cue in opinion_cues_en):
-                discarded_count += 1
+            cues = opinion_cues_hi if lang == "hi" else opinion_cues_en
+            if any(cue in s_lower for cue in cues):
+                discarded_opinions += 1
                 continue
 
-            # Extract entities and numbers
-            entities, numbers = self._extract_entities_and_numbers(s_clean, lang)
+            # Identify numbers or dates
+            has_numbers = bool(re.search(r"\b\d+([.,]\d+)?%?\b", s_clean))
+            claim_type = ClaimType.NUMERICAL if has_numbers else ClaimType.FACTUAL
 
-            # Classify claim type
-            claim_type = ClaimType.FACTUAL
-            if numbers:
-                claim_type = ClaimType.NUMERICAL
-            if '"' in s_clean or "“" in s_clean or "कहा" in s_clean or "said" in s_lower:
-                claim_type = ClaimType.QUOTE
+            # Extract basic entities
+            entities = []
+            if lang == "en":
+                # Capitalized words that are not start of sentence
+                words = s_clean.split()
+                for w in words[1:]:
+                    if w and w[0].isupper() and w.isalpha() and len(w) > 2:
+                        entities.append(w)
+            elif lang == "hi":
+                # Check for known organizations or entities
+                known_entities = ["इसरो", "भारत", "चंद्रयान", "नासा", "सरकार", "आरबीआई", "संसद"]
+                for ke in known_entities:
+                    if ke in s_clean:
+                        entities.append(ke)
 
-            # Formulate queries
             claim_id = self._generate_claim_id(s_clean)
-            if lang == "hi":
-                neutral_query = f"{s_clean[:120]}"
-                counter_query = f"{s_clean[:100]} तथ्य जांच फर्जी खबर"
-            else:
-                neutral_query = f"{s_clean[:120]}"
-                counter_query = f"{s_clean[:100]} fact check debunk false"
+
+            # Build dual queries
+            neutral_q = self._build_neutral_query(s_clean, lang, normalizer)
+            counter_q = self._build_counter_query(s_clean, lang)
 
             claims.append(
                 ExtractedClaim(
                     id=claim_id,
                     claim_text=s_clean,
                     claim_type=claim_type,
-                    entities=entities,
-                    dates_or_numbers=numbers,
-                    neutral_search_query=neutral_query,
-                    counter_search_query=counter_query,
+                    entities=entities[:4],
+                    dates_or_numbers=re.findall(r"\b\d+([.,]\d+)?%?\b", s_clean)[:3],
+                    neutral_search_query=neutral_q,
+                    counter_search_query=counter_q,
                     language=lang,
                     is_verifiable=True
                 )
             )
 
-        return claims, discarded_count
+            # Limit to 5 claims max per article
+            if len(claims) >= 5:
+                break
 
-    def _extract_entities_and_numbers(self, sentence: str, lang: str) -> Tuple[List[str], List[str]]:
-        """Extract basic entities (capitalized phrases/acronyms) and dates/numbers."""
-        numbers = re.findall(r"\b\d+(?:\.\d+)?%?|\b[०-९]+(?:\.[०-९]+)?%?", sentence)
-        
-        entities = []
-        if lang == "en":
-            # Extract capitalized words/acronyms (e.g. "Federal Reserve", "WHO", "NASA")
-            caps = re.findall(r"\b[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*\b", sentence)
-            entities = [c for c in caps if len(c) > 2 and c.lower() not in {"the", "this", "that", "there"}]
-        else:
-            # For Hindi, look for English acronyms or terms in quotes
-            english_entities = re.findall(r"\b[A-Z]{2,}\b|[A-Z][a-zA-Z0-9]+", sentence)
-            quoted = re.findall(r'["\']([^"\']+)["\']', sentence)
-            entities = list(set(english_entities + quoted))
+        return claims, discarded_opinions
 
-        return entities[:5], numbers[:5]
+    def _build_neutral_query(self, sentence: str, lang: str, normalizer) -> str:
+        """Strips punctuation and stop words to formulate a neutral keyword search query."""
+        tokens = normalizer.tokenize(sentence)
+        stop_en = {"the", "is", "in", "and", "to", "of", "a", "that", "it", "at", "by", "for", "with", "on", "are", "was"}
+        stop_hi = {"है", "हैं", "के", "में", "की", "को", "और", "से", "का", "था", "नहीं", "ने", "पर", "किया", "गया", "यह", "कि"}
+        stops = stop_hi if lang == "hi" else stop_en
 
-    def _generate_claim_id(self, claim_text: str) -> str:
-        """Deterministic unique claim identifier based on text content."""
-        clean = claim_text.strip().lower()
-        hash_digest = hashlib.sha256(clean.encode("utf-8")).hexdigest()[:12]
-        return f"clm_{hash_digest}"
+        filtered = [t for t in tokens if t.lower() not in stops and len(t) > 1]
+        query = " ".join(filtered[:8])
+        return query or sentence[:60]
+
+    def _build_counter_query(self, sentence: str, lang: str) -> str:
+        """Formulates counter-hypothesis query targeted at fact-check and debunk coverage."""
+        if lang == "hi":
+            return f"{sentence[:50]} तथ्य जांच फर्जी दावा"
+        return f"{sentence[:50]} fact check false debunk"
+
+    def _generate_claim_id(self, text: str) -> str:
+        """Deterministic claim ID derived from normalized lower text content."""
+        digest = hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()[:10]
+        return f"clm_{digest}"
 
 
-# Global singleton instance
+# Global singleton
 claim_extractor = ClaimExtractor()
-

@@ -16,10 +16,13 @@ describe('Navigation and Layout', () => {
     );
 
     expect(screen.getByText('TruthLens')).toBeInTheDocument();
-    expect(screen.getByText('Analyze')).toBeInTheDocument();
-    expect(screen.getByText('Model Insights')).toBeInTheDocument();
+    expect(screen.getByText('Verify')).toBeInTheDocument();
+    expect(screen.getByText('How It Works')).toBeInTheDocument();
     expect(screen.getByText('Sign in')).toBeInTheDocument();
     expect(screen.getByText('Get Started')).toBeInTheDocument();
+
+    // Verify old legacy Analyze and 2.0 badges are removed from primary nav
+    expect(screen.queryByText('Analyze')).not.toBeInTheDocument();
+    expect(screen.queryByText('2.0')).not.toBeInTheDocument();
   });
 });
-

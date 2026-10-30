@@ -38,6 +38,11 @@ class NLIPassageEvaluation(BaseModel):
     entailment_prob: float = Field(default=0.0, description="NLI entailment probability")
     contradiction_prob: float = Field(default=0.0, description="NLI contradiction probability")
     neutral_prob: float = Field(default=0.0, description="NLI neutral probability")
+    inference_method: str = Field(default="neural", description="Inference method: 'neural' or 'heuristic_fallback'")
+    relevance_score: float = Field(default=0.0, description="BM25/semantic relevance score between passage and claim")
+    exact_quotation_verified: bool = Field(default=True, description="Whether quotation exists verbatim in original source text")
+    source_type: str = Field(default="secondary", description="Source classification: 'primary', 'secondary', or 'other'")
+    relation_explanation: str = Field(default="", description="Explanation of how the passage relates to the claim")
     is_syndicated: bool = Field(default=False, description="Whether this is a syndicated wire copy")
     cluster_id: Optional[str] = Field(default=None, description="Syndication cluster ID")
 
@@ -54,6 +59,9 @@ class ClaimVerificationResult(BaseModel):
     contradicting_evidence_count: int = Field(default=0, description="Count of distinct independent contradicting sources")
     evaluations: List[NLIPassageEvaluation] = Field(default_factory=list, description="Passage-level NLI evaluations")
     explanation: str = Field(default="", description="Detailed human-readable reasoning")
+    why_verdict: Optional[str] = Field(default=None, description="Concise explanation in plain language")
+    corroboration_score: Optional[float] = Field(default=None, description="Measured corroboration level")
+    limitations: Optional[str] = Field(default=None, description="What could not be independently verified")
 
 
 class VerificationReport(BaseModel):
@@ -66,6 +74,10 @@ class VerificationReport(BaseModel):
     overall_verdict: FinalVerdict = Field(..., description="Overall synthesized verdict")
     overall_confidence: float = Field(default=0.0, description="Overall confidence score")
     executive_summary: str = Field(..., description="Transparent synthesized summary of findings")
+    why_this_verdict: Optional[str] = Field(default=None, description="Prominent explanation of why the article received this verdict")
+    limitations_and_uncertainty: Optional[str] = Field(default=None, description="Known limitations, unverified elements, or evidence gaps")
+    extraction_method: Optional[str] = Field(default="llm", description="Method used for claim extraction ('llm' or 'rule_based_fallback')")
+    nli_inference_method: Optional[str] = Field(default="neural", description="Method used for NLI verification ('neural' or 'heuristic_fallback')")
     claims_total: int = Field(default=0, description="Total claims investigated")
     claims_supported: int = Field(default=0, description="Number of supported claims")
     claims_refuted: int = Field(default=0, description="Number of refuted claims")
