@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column('headline', sa.String(length=500), nullable=True),
         sa.Column('source_url', sa.String(length=1000), nullable=True),
         sa.Column('language', sa.String(length=10), nullable=False, server_default='en'),
-        sa.Column('is_code_mixed', sa.Boolean(), nullable=False, server_default='0'),
+        sa.Column('is_code_mixed', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('status', sa.String(length=50), nullable=False, server_default='QUEUED'),
         sa.Column('current_step', sa.String(length=100), nullable=False, server_default='Queued for verification'),
         sa.Column('progress_percent', sa.Integer(), nullable=False, server_default='0'),

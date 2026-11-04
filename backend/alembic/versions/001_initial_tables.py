@@ -23,8 +23,8 @@ def upgrade() -> None:
         sa.Column('email', sa.String(length=255), nullable=False),
         sa.Column('hashed_password', sa.String(length=255), nullable=False),
         sa.Column('full_name', sa.String(length=255), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1'),
-        sa.Column('is_superuser', sa.Boolean(), nullable=False, server_default='0'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+        sa.Column('is_superuser', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id')
@@ -64,7 +64,7 @@ def upgrade() -> None:
         sa.Column('model_version', sa.String(length=50), nullable=False),
         sa.Column('processing_time_ms', sa.Float(), nullable=False),
         sa.Column('explanation_json', sa.Text(), nullable=True),
-        sa.Column('is_archived', sa.Boolean(), nullable=False, server_default='0'),
+        sa.Column('is_archived', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['article_id'], ['articles.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
@@ -87,7 +87,7 @@ def upgrade() -> None:
         sa.Column('precision', sa.Float(), nullable=False),
         sa.Column('recall', sa.Float(), nullable=False),
         sa.Column('f1_score', sa.Float(), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='0'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('metadata_json', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id')

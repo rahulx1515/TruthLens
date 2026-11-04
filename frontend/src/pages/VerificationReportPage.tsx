@@ -317,13 +317,13 @@ export const VerificationReportPage: React.FC = () => {
             {report.extraction_method && (
               <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono text-[10px] flex items-center gap-1">
                 <Cpu className="w-3 h-3" />
-                Extraction: {report.extraction_method === 'llm' ? 'Ollama LLM' : 'Rule-based'}
+                Extraction: {report.extraction_method === 'llm' ? 'Neural LLM' : 'Rule-based'}
               </span>
             )}
             {report.nli_inference_method && (
               <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono text-[10px] flex items-center gap-1">
                 <FileCheck className="w-3 h-3" />
-                NLI: {report.nli_inference_method === 'neural' ? 'Neural Transformer' : 'Heuristic'}
+                NLI: {report.nli_inference_method === 'neural' ? 'Neural Transformer' : report.nli_inference_method === 'hf_inference_api' ? 'HF Cloud NLI' : 'Heuristic'}
               </span>
             )}
             <span>

@@ -16,8 +16,27 @@ export const getGuestClaimToken = (): string | null => {
   return localStorage.getItem('truthlens_guest_claim_token');
 };
 
+/**
+ * Resolves the API base URL from VITE_API_URL or defaults to '/api/v1' for local development.
+ * Ensures /api/v1 is appended exactly once regardless of backend hostname formatting.
+ */
+export const resolveApiBaseUrl = (rawUrl?: string): string => {
+  const url = (rawUrl ?? (import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+  if (!url) {
+    return '/api/v1';
+  }
+  const clean = url.replace(/\/+$/, '');
+  if (clean.endsWith('/api/v1')) {
+    return clean;
+  }
+  if (clean.endsWith('/api')) {
+    return `${clean}/v1`;
+  }
+  return `${clean}/api/v1`;
+};
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: resolveApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

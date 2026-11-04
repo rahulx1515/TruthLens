@@ -15,6 +15,7 @@ from app.schemas.verification import (
     FinalVerdict,
     VerificationReport,
 )
+from app.services.llm_service import LLMService, llm_service
 from app.services.verdict_engine import verdict_engine
 
 logger = logging.getLogger("truthlens.report_generator")
@@ -25,8 +26,9 @@ class ReportGenerator:
     Generates transparent, evidence-based verification reports.
     """
 
-    def __init__(self, client: Optional[OllamaClient] = None):
+    def __init__(self, client: Optional[OllamaClient] = None, llm: Optional[LLMService] = None):
         self.ollama = client or ollama_client
+        self.llm = llm or llm_service
 
     def generate_report(
         self,
@@ -156,8 +158,8 @@ class ReportGenerator:
         claim_results: List[ClaimVerificationResult],
         lang: str = "en"
     ) -> str:
-        """Synthesize human-readable summary with Ollama or deterministic fallback template."""
-        if self.ollama.is_healthy():
+        """Synthesize human-readable summary with LLM or deterministic fallback template."""
+        if self.llm.is_available():
             try:
                 system_prompt = (
                     "You are the senior editorial verifier for TruthLens. "
@@ -175,16 +177,16 @@ class ReportGenerator:
                     f"Investigated Claim Findings:\n{findings_summary}\n\n"
                     f"Provide a clear, balanced factual summary explaining why this verdict was reached."
                 )
-                resp = self.ollama.generate(
+                generated_text, provider = self.llm.generate(
                     prompt=prompt,
                     system=system_prompt,
-                    options={"num_predict": 256, "num_ctx": 1024}
+                    max_tokens=256,
+                    temperature=0.1
                 )
-                generated_text = resp.get("response", "").strip()
                 if generated_text and len(generated_text) > 30:
                     return generated_text
             except Exception as e:
-                logger.info(f"Ollama summary synthesis failed ({e}), using template")
+                logger.info(f"LLM summary synthesis failed ({e}), using template")
 
         # Deterministic template fallback
         return self._template_summary(overall_verdict, claim_results, lang)

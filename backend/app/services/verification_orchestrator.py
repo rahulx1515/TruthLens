@@ -153,9 +153,8 @@ class VerificationOrchestrator:
                 db, job, status="VERIFYING", step="Evaluating evidence entailment and contradiction with NLI", progress=80
             )
 
-            # Ensure NLI model load is attempted once and kept in memory
+            # Ensure NLI model load is attempted once if enabled
             nli_verifier.load_model()
-            nli_inference_method = "neural" if nli_verifier.is_neural_available else "heuristic_fallback"
 
             claim_results: List[ClaimVerificationResult] = []
 
@@ -196,6 +195,19 @@ class VerificationOrchestrator:
                 db.add(claim_record)
 
             db.commit()
+
+            # Determine actual NLI inference method based on what genuinely succeeded
+            all_eval_methods = {
+                ev.inference_method
+                for cres in claim_results
+                for ev in cres.evaluations
+            }
+            if "neural" in all_eval_methods:
+                nli_inference_method = "neural"
+            elif "hf_inference_api" in all_eval_methods:
+                nli_inference_method = "hf_inference_api"
+            else:
+                nli_inference_method = "heuristic_fallback"
 
             # Stage 5: GENERATING REPORT (95%)
             self._update_job_state(

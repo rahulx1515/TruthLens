@@ -228,6 +228,83 @@ def get_verification_job_status(
     )
 
 
+@router.get("", response_model=List[VerificationHistoryItem])
+@router.get("/history", response_model=List[VerificationHistoryItem])
+def list_verification_history(
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    verdict: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    x_guest_session_id: Optional[str] = Header(None, alias="X-Guest-Session-ID")
+):
+    """
+    Lists past verification jobs strictly scoped to the authenticated user ID
+    or to the active guest session. Never leaks cross-user or public reports.
+    """
+    if current_user:
+        query = db.query(VerificationJob).filter(VerificationJob.user_id == current_user.id)
+    elif x_guest_session_id and x_guest_session_id.strip():
+        # Validate guest session exists and is unexpired
+        try:
+            session = guest_session_service.validate_session(db, x_guest_session_id.strip())
+            query = db.query(VerificationJob).filter(
+                VerificationJob.guest_session_id == session.id,
+                VerificationJob.user_id.is_(None)
+            )
+        except HTTPException:
+            return []
+    else:
+        return []
+
+    # Optional verdict filtering
+    if verdict and verdict.strip() and verdict.upper() != "ALL":
+        query = query.filter(VerificationJob.overall_verdict == verdict.strip().upper())
+
+    # Optional search filtering
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            (VerificationJob.headline.ilike(term)) | (VerificationJob.original_text.ilike(term))
+        )
+
+    jobs = query.order_by(VerificationJob.created_at.desc()).limit(limit).all()
+
+    items = []
+    for j in jobs:
+        claims_count = 0
+        sup_count = 0
+        contra_count = 0
+
+        # Extract counts from report_json if present
+        if j.report_json:
+            try:
+                rep = json.loads(j.report_json)
+                claims_count = rep.get("claims_total", 0)
+                for cr in rep.get("claim_results", []):
+                    sup_count += cr.get("supporting_evidence_count", 0)
+                    contra_count += cr.get("contradicting_evidence_count", 0)
+            except Exception:
+                pass
+
+        items.append(
+            VerificationHistoryItem(
+                job_id=j.id,
+                headline=j.headline or (j.original_text[:60] + "..."),
+                status=j.status,
+                overall_verdict=j.overall_verdict,
+                overall_confidence=j.overall_confidence,
+                language=j.language,
+                claims_count=claims_count,
+                supporting_sources_count=sup_count,
+                contradicting_sources_count=contra_count,
+                created_at=j.created_at.isoformat()
+            )
+        )
+
+    return items
+
+
 @router.get("/{job_id}", response_model=VerificationReport)
 def get_verification_report(
     job_id: str,
@@ -384,82 +461,6 @@ def delete_verification_job(
         "message": f"Verification report {job_id} deleted successfully.",
         "deleted": True
     }
-
-
-@router.get("", response_model=List[VerificationHistoryItem])
-def list_verification_history(
-    limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
-    verdict: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
-    x_guest_session_id: Optional[str] = Header(None, alias="X-Guest-Session-ID")
-):
-    """
-    Lists past verification jobs strictly scoped to the authenticated user ID
-    or to the active guest session. Never leaks cross-user or public reports.
-    """
-    if current_user:
-        query = db.query(VerificationJob).filter(VerificationJob.user_id == current_user.id)
-    elif x_guest_session_id and x_guest_session_id.strip():
-        # Validate guest session exists and is unexpired
-        try:
-            session = guest_session_service.validate_session(db, x_guest_session_id.strip())
-            query = db.query(VerificationJob).filter(
-                VerificationJob.guest_session_id == session.id,
-                VerificationJob.user_id.is_(None)
-            )
-        except HTTPException:
-            return []
-    else:
-        return []
-
-    # Optional verdict filtering
-    if verdict and verdict.strip() and verdict.upper() != "ALL":
-        query = query.filter(VerificationJob.overall_verdict == verdict.strip().upper())
-
-    # Optional search filtering
-    if search and search.strip():
-        term = f"%{search.strip()}%"
-        query = query.filter(
-            (VerificationJob.headline.ilike(term)) | (VerificationJob.original_text.ilike(term))
-        )
-
-    jobs = query.order_by(VerificationJob.created_at.desc()).limit(limit).all()
-
-    items = []
-    for j in jobs:
-        claims_count = 0
-        sup_count = 0
-        contra_count = 0
-
-        # Extract counts from report_json if present
-        if j.report_json:
-            try:
-                rep = json.loads(j.report_json)
-                claims_count = rep.get("claims_total", 0)
-                for cr in rep.get("claim_results", []):
-                    sup_count += cr.get("supporting_evidence_count", 0)
-                    contra_count += cr.get("contradicting_evidence_count", 0)
-            except Exception:
-                pass
-
-        items.append(
-            VerificationHistoryItem(
-                job_id=j.id,
-                headline=j.headline or (j.original_text[:60] + "..."),
-                status=j.status,
-                overall_verdict=j.overall_verdict,
-                overall_confidence=j.overall_confidence,
-                language=j.language,
-                claims_count=claims_count,
-                supporting_sources_count=sup_count,
-                contradicting_sources_count=contra_count,
-                created_at=j.created_at.isoformat()
-            )
-        )
-
-    return items
 
 
 @router.post("/claim-guest-reports", response_model=ClaimGuestReportsResponse)

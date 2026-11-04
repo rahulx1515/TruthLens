@@ -3,12 +3,12 @@ TruthLens - Multilingual NLI Claim Verifier
 Performs Natural Language Inference (NLI) between retrieved evidence passages (premise)
 and atomic claims (hypothesis).
 Supports multilingual entailment and contradiction scoring on CPU with calibrated thresholds.
-Distinguishes neural transformer inference from calibrated heuristic fallback.
+Distinguishes neural transformer inference, Hugging Face Inference API, and calibrated heuristic fallback.
+Avoids importing PyTorch at application startup when local neural NLI is disabled.
 """
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
-import torch
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import settings
 from app.schemas.evidence import EvidencePassage
@@ -20,8 +20,11 @@ logger = logging.getLogger("truthlens.nli")
 
 class NLIVerifier:
     """
-    Multilingual NLI Verifier running on CPU with bounded resources.
-    Uses MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli or calibrated deterministic fallback.
+    Multilingual NLI Verifier.
+    Supports:
+    1. Local CPU PyTorch transformer (MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli) when ENABLE_LOCAL_NEURAL_NLI=True
+    2. Remote Hugging Face Inference API when configured with HF_API_KEY / HUGGINGFACE_API_KEY
+    3. Calibrated deterministic multilingual heuristic fallback
     """
 
     def __init__(
@@ -46,8 +49,20 @@ class NLIVerifier:
         """Returns True if the PyTorch Hugging Face transformer model is in memory."""
         return self._is_loaded and self.model is not None and self.tokenizer is not None
 
+    @property
+    def is_hf_api_configured(self) -> bool:
+        """Returns True if Hugging Face API key or custom endpoint is configured for remote NLI."""
+        return bool(settings.HF_API_KEY or settings.HUGGINGFACE_API_KEY or settings.HF_API_URL)
+
     def load_model(self) -> bool:
-        """Loads Hugging Face NLI transformer model into memory on CPU once."""
+        """
+        Loads Hugging Face NLI transformer model into memory on CPU once if enabled.
+        Does not import PyTorch or Transformers when ENABLE_LOCAL_NEURAL_NLI is False.
+        """
+        if not getattr(settings, "ENABLE_LOCAL_NEURAL_NLI", False):
+            logger.info("Local neural NLI is disabled (ENABLE_LOCAL_NEURAL_NLI=false); skipping local transformer load.")
+            return False
+
         if self._is_loaded:
             return True
         if self._load_attempted and not self._is_loaded:
@@ -56,10 +71,12 @@ class NLIVerifier:
 
         self._load_attempted = True
         try:
-            torch.set_num_threads(settings.OLLAMA_NUM_THREADS)
+            import torch
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-            logger.info(f"Loading NLI model {self.model_name} on CPU...")
+            torch.set_num_threads(settings.OLLAMA_NUM_THREADS)
+
+            logger.info(f"Loading local NLI model {self.model_name} on CPU...")
             start_t = time.time()
             try:
                 # Prefer local cache to prevent network timeout retries
@@ -91,20 +108,44 @@ class NLIVerifier:
     ) -> NLIPassageEvaluation:
         """
         Evaluates relationship between evidence passage (premise) and claim (hypothesis).
-        Tracks whether neural transformer inference or heuristic fallback was applied.
+        Tracks whether local neural, remote HF API, or heuristic fallback was applied.
+        Never reports 'hf_inference_api' or 'neural' unless that method actually succeeded.
         """
-        inference_method = "neural" if self.is_neural_available else "heuristic_fallback"
-        model_name = self.model_name if self.is_neural_available else None
+        entail_p: Optional[float] = None
+        contra_p: Optional[float] = None
+        neutral_p: Optional[float] = None
+        inference_method = "heuristic_fallback"
 
+        # 1. Local neural transformer inference if loaded
         if self.is_neural_available:
-            entail_p, contra_p, neutral_p = self._predict_neural(
-                premise=passage.passage_text, hypothesis=claim_text
-            )
-        else:
-            # Deterministic lexical and semantic heuristic fallback
+            try:
+                entail_p, contra_p, neutral_p = self._predict_neural(
+                    premise=passage.passage_text, hypothesis=claim_text
+                )
+                inference_method = "neural"
+            except Exception as e:
+                logger.warning(f"Local neural NLI prediction failed: {e}")
+                entail_p = contra_p = neutral_p = None
+
+        # 2. Remote Hugging Face Inference API if configured
+        if entail_p is None and self.is_hf_api_configured:
+            try:
+                hf_scores = self._predict_hf_api(
+                    premise=passage.passage_text, hypothesis=claim_text
+                )
+                if hf_scores is not None:
+                    entail_p, contra_p, neutral_p = hf_scores
+                    inference_method = "hf_inference_api"
+            except Exception as e:
+                logger.warning(f"Hugging Face NLI inference failed: {e}")
+                entail_p = contra_p = neutral_p = None
+
+        # 3. Deterministic lexical and semantic heuristic fallback
+        if entail_p is None or contra_p is None or neutral_p is None:
             entail_p, contra_p, neutral_p = self._predict_heuristic(
                 premise=passage.passage_text, hypothesis=claim_text, lang=lang
             )
+            inference_method = "heuristic_fallback"
 
         # Apply calibrated decision thresholds
         if entail_p >= self.entailment_threshold and entail_p > contra_p:
@@ -149,6 +190,7 @@ class NLIVerifier:
 
     def _predict_neural(self, premise: str, hypothesis: str) -> Tuple[float, float, float]:
         """Runs PyTorch sequence classification on CPU."""
+        import torch
         with torch.no_grad():
             inputs = self.tokenizer(
                 premise,
@@ -168,6 +210,102 @@ class NLIVerifier:
             neutral_idx = next(i for i, l in id2label.items() if "neutral" in l)
 
             return float(probs[entail_idx]), float(probs[contra_idx]), float(probs[neutral_idx])
+
+    def _predict_hf_api(self, premise: str, hypothesis: str) -> Optional[Tuple[float, float, float]]:
+        """
+        Sends a valid premise-hypothesis Natural Language Inference request to Hugging Face Inference API.
+        Includes both the evidence passage (premise) and the claim (hypothesis).
+        Maps the remote response to (entailment_prob, contradiction_prob, neutral_prob).
+        Safely handles timeouts, HTTP errors (401, 429, 503), and non-standard payloads.
+        Returns None on any error so caller explicitly uses heuristic fallback.
+        """
+        api_key = settings.HF_API_KEY or settings.HUGGINGFACE_API_KEY
+        endpoint = settings.HF_API_URL or f"https://api-inference.huggingface.co/models/{self.model_name}"
+
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        payload = {
+            "inputs": {
+                "text": premise,
+                "text_pair": hypothesis
+            },
+            "parameters": {
+                "wait_for_model": False
+            }
+        }
+
+        try:
+            import requests
+            resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+
+            # If provider rejected text_pair format, retry with standard separator string
+            if resp.status_code == 400:
+                alt_payload = {
+                    "inputs": f"{premise} </s></s> {hypothesis}"
+                }
+                resp = requests.post(endpoint, json=alt_payload, headers=headers, timeout=10)
+
+            if resp.status_code == 503:
+                logger.warning("HF NLI model is currently loading on Hugging Face (503).")
+                return None
+            elif resp.status_code == 429:
+                logger.warning("HF NLI API rate limit exceeded (429).")
+                return None
+            elif resp.status_code != 200:
+                logger.warning(f"HF NLI API returned HTTP {resp.status_code}: {resp.text[:200]}")
+                return None
+
+            data = resp.json()
+            return self._parse_hf_response(data)
+        except Exception as e:
+            logger.warning(f"Error calling Hugging Face NLI API ({e}). Falling back to heuristic.")
+            return None
+
+    def _parse_hf_response(self, data: Any) -> Optional[Tuple[float, float, float]]:
+        """Parses HF text classification response and extracts (entail_p, contra_p, neutral_p)."""
+        if not isinstance(data, list) or not data:
+            if isinstance(data, dict) and "error" in data:
+                logger.warning(f"HF API returned error: {data['error']}")
+            return None
+
+        # Handle nested list [[{label, score}, ...]] or single [{label, score}, ...]
+        items = data[0] if isinstance(data[0], list) else data
+        if not isinstance(items, list):
+            return None
+
+        scores: Dict[str, float] = {}
+        for item in items:
+            if isinstance(item, dict) and "label" in item and "score" in item:
+                lbl = str(item["label"]).strip().lower()
+                try:
+                    scores[lbl] = float(item["score"])
+                except (ValueError, TypeError):
+                    continue
+
+        if not scores:
+            return None
+
+        entail_p = next((v for k, v in scores.items() if "entail" in k), None)
+        contra_p = next((v for k, v in scores.items() if "contra" in k), None)
+        neutral_p = next((v for k, v in scores.items() if "neutral" in k), None)
+
+        # Handle unmapped labels (e.g. label_0, label_1, label_2)
+        # For MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli: 0: entailment, 1: neutral, 2: contradiction
+        if entail_p is None and "label_0" in scores:
+            entail_p = scores.get("label_0", 0.0)
+            neutral_p = scores.get("label_1", 0.0)
+            contra_p = scores.get("label_2", 0.0)
+
+        if entail_p is None or contra_p is None or neutral_p is None:
+            logger.warning(f"Incomplete NLI labels returned from HF API: {list(scores.keys())}")
+            return None
+
+        total = entail_p + contra_p + neutral_p
+        if total > 0:
+            return (entail_p / total, contra_p / total, neutral_p / total)
+        return None
 
     def _predict_heuristic(
         self, premise: str, hypothesis: str, lang: str = "en"

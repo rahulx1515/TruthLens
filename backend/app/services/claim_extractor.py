@@ -17,6 +17,7 @@ from app.ml.ollama_client import OllamaClient, ollama_client
 from app.nlp.normalizers import get_normalizer
 from app.nlp.registry import language_registry
 from app.schemas.claim import ClaimExtractionResponse, ClaimType, ExtractedClaim
+from app.services.llm_service import LLMService, llm_service
 
 logger = logging.getLogger("truthlens.claim_extractor")
 
@@ -27,8 +28,9 @@ class ClaimExtractor:
     Tracks whether LLM extraction succeeded or rule-based fallback was used.
     """
 
-    def __init__(self, client: Optional[OllamaClient] = None):
+    def __init__(self, client: Optional[OllamaClient] = None, llm: Optional[LLMService] = None):
         self.ollama = client or ollama_client
+        self.llm = llm or llm_service
 
     def extract_claims(self, text: str, headline: Optional[str] = None) -> ClaimExtractionResponse:
         """
@@ -67,28 +69,27 @@ class ClaimExtractor:
         # Keep input text concise (~1400 chars) to prevent Ollama CPU timeouts
         concise_text = self._compress_text_for_llm(normalized_text, normalizer, max_chars=1400)
 
-        # Try LLM-based extraction first if service is responsive
-        if self.ollama.is_healthy():
+        # Try LLM-based extraction first if any LLM provider is available
+        if self.llm.is_available():
             try:
                 claims, discarded_opinions = self._extract_with_llm(
                     concise_text, lang=lang, is_code_mixed=is_code_mixed
                 )
-                extraction_method = "llm"
+                if claims:
+                    extraction_method = "llm"
+                else:
+                    claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
+                    extraction_method = "rule_based_fallback"
+                    fallback_reason = "LLM returned no valid assertions; rule-based extraction applied"
             except Exception as e:
-                logger.warning(f"Ollama claim extraction failed ({e}), using rule-based fallback")
+                logger.warning(f"LLM claim extraction failed ({e}), using rule-based fallback")
                 claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
                 extraction_method = "rule_based_fallback"
-                fallback_reason = f"Ollama generation failed or timed out ({type(e).__name__})"
+                fallback_reason = f"LLM generation failed or timed out ({type(e).__name__})"
         else:
             claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
             extraction_method = "rule_based_fallback"
-            fallback_reason = "Local Ollama service offline or unreachable"
-
-        # If LLM returned empty list on non-empty input, run rule-based fallback
-        if not claims and len(normalized_text.split()) >= 3:
-            claims, discarded_opinions = self._extract_with_rules(normalized_text, lang)
-            extraction_method = "rule_based_fallback"
-            fallback_reason = "LLM returned no valid assertions; rule-based extraction applied"
+            fallback_reason = "No neural LLM service configured or reachable"
 
         elapsed_ms = round((time.time() - start_time) * 1000, 2)
 
@@ -181,7 +182,9 @@ Output strict JSON matching:
   "discarded_opinions_count": 0
 }}"""
 
-        data = self.ollama.generate_json(prompt=prompt, system=system_prompt)
+        data, provider = self.llm.generate_json(prompt=prompt, system=system_prompt)
+        if not data:
+            return [], 0
         raw_claims = data.get("claims", [])
         discarded = int(data.get("discarded_opinions_count", 0))
 

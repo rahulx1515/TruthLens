@@ -1,0 +1,79 @@
+# TruthLens - Render Blueprint Deployment Configuration
+# https://render.com/docs/blueprint-spec
+
+services:
+  # ---------------------------------------------------------------------------
+  # TruthLens Backend API (FastAPI)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: truthlens-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # CRITICAL: sync: false connects the backend to your existing manual Render PostgreSQL database ('truthlens-db').
+      # When prompted in the Render Dashboard, set DATABASE_URL to your existing database's Internal Connection String.
+      # This completely prevents Render from creating any duplicate or conflicting database.
+      - key: DATABASE_URL
+        sync: false
+
+      # Production Security
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+
+      # Memory Optimization for Cloud Hosting
+      # Keeps PyTorch / local weights out of memory to run comfortably within 512 MB RAM
+      - key: ENABLE_LOCAL_NEURAL_NLI
+        value: "false"
+
+      # Cloud LLM & NLI Providers (configure keys in Render Dashboard)
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: HUGGINGFACE_MODEL
+        value: meta-llama/Llama-3.2-3B-Instruct
+
+      # CORS Configuration: restrict to the production frontend domain
+      # e.g., https://truthlens-frontend.onrender.com
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # TruthLens Frontend SPA (React + Vite + Tailwind)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: truthlens-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    routes:
+      # Single-Page Application (SPA) client-side routing rewrite rule
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Connects the frontend to the backend service host automatically
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: truthlens-backend
+          envVarKey: RENDER_EXTERNAL_URL
+
+# NOTE ON DATABASES:
+# No 'databases:' block is defined in this Blueprint because 'truthlens-db' was already
+# created manually in Render. Defining a databases block here would trigger Render to
+# provision a second, duplicate database. Setting 'sync: false' on DATABASE_URL above
+# allows you to link your existing database safely and directly.
+

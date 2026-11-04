@@ -5,9 +5,10 @@ FastAPI application with CORS, route registration, and database initialization.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.database.session import Base, engine
+from app.database.session import Base, SessionLocal, engine
 import app.models  # ensure models are registered with Base
 
 
@@ -55,9 +56,17 @@ def root():
 
 @app.get("/health", tags=["Health"])
 def health_check():
+    db_status = "connected"
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception as e:
+        db_status = f"unreachable: {type(e).__name__}"
+
     return {
         "status": "online",
-        "database": "connected",
+        "database": db_status,
         "environment": settings.ENVIRONMENT
     }
 

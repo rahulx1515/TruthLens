@@ -22,10 +22,10 @@ def upgrade():
         sa.Column('claim_secret_hash', sa.String(length=128), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('is_claimed', sa.Boolean(), nullable=False, default=False),
+        sa.Column('is_claimed', sa.Boolean(), nullable=False, default=False, server_default=sa.text('false')),
         sa.Column('claimed_by_user_id', sa.Integer(), nullable=True),
         sa.Column('claimed_at', sa.DateTime(), nullable=True),
-        sa.Column('request_count', sa.Integer(), nullable=False, default=0),
+        sa.Column('request_count', sa.Integer(), nullable=False, default=0, server_default=sa.text('0')),
         sa.ForeignKeyConstraint(['claimed_by_user_id'], ['users.id'], ondelete='SET NULL'),
         sa.PrimaryKeyConstraint('id')
     )
