@@ -29,3 +29,4 @@ pyyaml>=6.0.1
 torch>=2.2.0
 transformers>=4.38.0
 feedparser
+psycopg[binary]>=3.2.3
